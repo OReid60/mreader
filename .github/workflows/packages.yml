@@ -5,6 +5,7 @@ on:
     tags: ['v*']
 permissions:
   contents: read
+  actions: read
 jobs:
   linux:
     runs-on: ubuntu-22.04
@@ -35,3 +36,8 @@ jobs:
           path: releases/linux/*
           if-no-files-found: error
           retention-days: 14
+  verify-packages:
+    needs: linux
+    uses: ./.github/workflows/verify-linux.yml
+    with:
+      source_run: ${{ github.run_id }}
