@@ -12,8 +12,9 @@ function element() {
       elements.delete("#" + this.id);
     },
     addEventListener() {},
+    focus() {},
     querySelector() {
-      return { focus() {} };
+      return element();
     },
   };
 }

@@ -595,9 +595,22 @@ select {
   position: fixed;
   inset: 0;
   background: #0b0c0e;
-  z-index: 20;
+  z-index: 60;
   overflow: auto;
 }
+body.reader-open .mobile-bottom { display: none; }
+.reader.reader-immersive .reader-bar,
+.reader.reader-immersive .reading-bottom { display: none; }
+.reader.reader-immersive .reading-stage {
+  min-height: 100dvh;
+  padding: 0;
+}
+.reader.reader-immersive .reading-stage.height {
+  height: 100dvh;
+  min-height: 0;
+  align-items: center;
+}
+.reader.reader-immersive .reading-stage.width .reading-page { width: 100%; }
 .reader-bar {
   height: 66px;
   background: #191a1df5;

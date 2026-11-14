@@ -90,6 +90,32 @@ const { pathToFileURL } = require('node:url');
     const desktop = await open(1440,false);
     assert.equal(await desktop.locator('.sidebar').count(),1);
     assert.equal(await desktop.locator('.mobile-bottom').count(),0);
+    for (const readerPage of [phone, await open(900,true)]) {
+      await readerPage.evaluate(() => {
+        window.MreaderChrome = { setImmersive(value) { window.lastImmersive = value; } };
+        const book = state.books[0];
+        const url='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="1000"><rect width="600" height="1000" fill="#d4c8b2"/><rect x="24" y="24" width="552" height="952" fill="#252830"/><text x="65" y="160" font-size="48" fill="white">Reader test page</text><path d="M50 240H550M50 500H550M300 240V920" stroke="#d4c8b2" stroke-width="12"/></svg>');
+        state.reader = { book, chapter:book.chapters[0], page:2, total:12, url, loading:false, error:'' };
+        renderReader();
+      });
+      assert(await readerPage.locator('#reader').isVisible());
+      await readerPage.waitForFunction(()=>document.querySelector('.reading-page')?.naturalWidth>0);
+      assert.equal(await readerPage.locator('.mobile-bottom').isVisible(),false);
+      assert.equal(await readerPage.locator('.reader-bar').isVisible(),false);
+      assert.equal(await readerPage.evaluate(()=>window.lastImmersive),true);
+      const height = await readerPage.locator('.reading-stage').evaluate(el=>el.getBoundingClientRect().height);
+      assert(height >= 780, 'Reader fills the available phone/tablet viewport');
+      await readerPage.mouse.click((await readerPage.viewportSize()).width / 2,200);
+      assert(await readerPage.locator('.reader-bar').isVisible());
+      assert.equal(await readerPage.evaluate(()=>state.reader.page),2,'Center tap must not turn the page');
+      await readerPage.locator('[data-action="fullscreen"]').click();
+      await readerPage.locator('[data-action="fullscreen"]').click();
+      assert.equal(await readerPage.locator('.reading-bottom').isVisible(),false);
+      await readerPage.screenshot({path:path.join(output,`fullscreen-reader-${readerPage.viewportSize().width}.png`)});
+      await readerPage.evaluate(()=>closeReader());
+      assert(await readerPage.locator('.mobile-bottom').isVisible());
+      assert.equal(await readerPage.evaluate(()=>window.lastImmersive),false);
+    }
     assert.deepEqual(errors,[]);
     console.log('PASS mobile layout: three columns, screenshot chrome, category move/filter, search, account access, desktop isolation, no overflow or JavaScript errors');
   } finally { await browser.close(); }
