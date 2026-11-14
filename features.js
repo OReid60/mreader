@@ -275,6 +275,7 @@ async function runVerification(plan) {
       await turnPage(1);
       check("pdf-reader-progress", (await api("snapshot")).progress.some(progress => progress.bookId === pdf.id && progress.page === 1));
       closeReader();
+      check("pdf-library-page-count", document.querySelector(".hero")?.textContent.includes(`Page 2 of ${countedPdf.chapters[0].pages}`));
       // Keep the verified interface visible briefly for the CI screenshot.
       await new Promise(resolve => setTimeout(resolve, 3000));
       await api("verification_finish", { report: { ok: true, checks, cloudConfigured: featureState.cloud.configured, completedAt: new Date().toISOString() } });

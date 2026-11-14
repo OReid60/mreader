@@ -486,6 +486,7 @@ async function openReader(id, chapterId, page = null) {
       if (state.reader !== reader) { pdfDocument.destroy(); return; }
       reader.pdfDocument = pdfDocument;
       reader.total = pdfDocument.numPages;
+      reader.chapter.pages = reader.total;
       meta.pages = reader.total;
     }
     state.reader.page = Math.min(
