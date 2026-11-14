@@ -22,9 +22,11 @@ with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as book:
 text = b"BT /F1 22 Tf 50 720 Td (Mreader PDF validation) Tj ET\n"
 objects = [
     b"<< /Type /Catalog /Pages 2 0 R >>",
-    b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    b"<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>",
     b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
     b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    b"<< /Length " + str(len(text)).encode() + b" >>\nstream\n" + text + b"endstream",
+    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>",
     b"<< /Length " + str(len(text)).encode() + b" >>\nstream\n" + text + b"endstream",
 ]
 document = bytearray(b"%PDF-1.4\n")

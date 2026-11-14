@@ -270,6 +270,11 @@ async function runVerification(plan) {
     await pdfDocument.destroy();
     URL.revokeObjectURL(pdfUrl);
     if (plan.offline) {
+      await openReader(pdf.id, pdf.chapters[0].id, 0);
+      check("pdf-reader-uses-canvas", !!state.reader?.pdfDocument && !!document.querySelector("canvas.reading-page"));
+      await turnPage(1);
+      check("pdf-reader-progress", (await api("snapshot")).progress.some(progress => progress.bookId === pdf.id && progress.page === 1));
+      closeReader();
       // Keep the verified interface visible briefly for the CI screenshot.
       await new Promise(resolve => setTimeout(resolve, 3000));
       await api("verification_finish", { report: { ok: true, checks, cloudConfigured: featureState.cloud.configured, completedAt: new Date().toISOString() } });
