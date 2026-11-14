@@ -2,6 +2,8 @@
 
 The Rust library is shared across Windows, Linux, and Android. Each platform still needs its own compiler and packaging tools; changing a filename does not convert an executable between operating systems.
 
+Current coordinated release: [0.3.4 progress sync fix](https://github.com/OReid60/mreader/releases/tag/v0.3.4-progress-sync). Update both devices to avoid PostgreSQL's rejection of the old NUL-separated progress keys. Existing local positions and accounts are preserved; no Supabase schema change is required. The APK, Windows installer/portable EXE, DEB, and AppImage are attached to the private release. Cross-device page-position confirmation follows installation on the phone.
+
 ## Windows x64
 
 Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop.ps1 package`.
@@ -28,7 +30,7 @@ Run `bash scripts/build-linux.sh` on Linux. It generates a DEB installer for Deb
 
 Build dependencies include GTK 3, WebKitGTK 4.1, SSL, D-Bus development headers, patchelf, and librsvg. The included `.github/workflows/packages.yml` provisions these on an Ubuntu runner and uploads build artifacts. Linux builds run in the private repository https://github.com/OReid60/mreader. The packaging workflow checks JavaScript and Rust before building, then the reusable verification workflow opens the packaged AppImage on a virtual display and checks local imports, PDF rendering, navigation, and saved progress. Artifacts are retained for 14 days; downloaded copies are kept locally under `releases/linux`.
 
-The current packages target Linux x64 and are built on Ubuntu 22.04. Older distributions have not been validated. Install the DEB with `sudo apt install ./Mreader_0.3.2_amd64.deb`, or make the AppImage executable with `chmod +x Mreader_0.3.2_amd64.AppImage` and run it.
+The current packages target Linux x64 and are built on Ubuntu 22.04. Older distributions have not been validated. Install the DEB with `sudo apt install ./Mreader_0.3.4_amd64.deb`, or make the AppImage executable with `chmod +x Mreader_0.3.4_amd64.AppImage` and run it.
 
 ## Validation
 
