@@ -52,15 +52,16 @@ jobs:
           "$APPDIR/AppRun" > linux-smoke.log 2>&1 &
           reader_pid=$!
           trap 'kill "$reader_pid" 2>/dev/null || true' EXIT
-          sleep 2
-          kill -0 "$reader_pid"
-          import -window root linux-smoke.png
-          for attempt in $(seq 1 60); do
-            if ! kill -0 "$reader_pid" 2>/dev/null; then break; fi
+          deadline=$((SECONDS + 90))
+          while kill -0 "$reader_pid" 2>/dev/null && ((SECONDS < deadline)); do
+            import -window root linux-frame.png
+            colors=$(identify -format '%k' linux-frame.png)
+            if ((colors > 8)); then cp linux-frame.png linux-smoke.png; fi
             sleep 1
           done
           if kill -0 "$reader_pid" 2>/dev/null; then echo 'Packaged app verification timed out'; exit 1; fi
           wait "$reader_pid"
+          test -s linux-smoke.png
           python3 -c 'import json; r=json.load(open("linux-verification.json")); assert r["ok"] and len(r["checks"]) >= 10, r; print("Packaged app checks:", len(r["checks"]))'
           if grep -Ei 'panicked at|error while loading shared libraries|symbol lookup error|cannot open display' linux-smoke.log; then exit 1; fi
           SCRIPT
