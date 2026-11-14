@@ -480,7 +480,7 @@ async function openReader(id, chapterId, page = null) {
     if (state.reader?.version !== version) return;
     state.reader.total = meta.pages;
     state.reader.pdf = meta.pdf;
-    if (meta.pdf && typeof isAndroid === "function" && isAndroid()) {
+    if (meta.pdf && typeof usesCanvasPdf === "function" && usesCanvasPdf()) {
       const reader = state.reader;
       const pdfDocument = await openMobilePdf(await getPage(reader, 0));
       if (state.reader !== reader) { pdfDocument.destroy(); return; }

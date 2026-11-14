@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: mreader-linux
@@ -40,12 +41,22 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           export APPDIR="$PWD/packages/squashfs-root"
+          export MREADER_VERIFY_REPORT="$PWD/linux-verification.json"
+          export MREADER_VERIFY_FILES="$(python3 scripts/create-test-fixtures.py)"
+          export MREADER_VERIFY_OFFLINE=1
           "$APPDIR/AppRun" > linux-smoke.log 2>&1 &
           reader_pid=$!
           trap 'kill "$reader_pid" 2>/dev/null || true' EXIT
-          sleep 12
+          sleep 2
           kill -0 "$reader_pid"
           import -window root linux-smoke.png
+          for attempt in $(seq 1 60); do
+            if ! kill -0 "$reader_pid" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if kill -0 "$reader_pid" 2>/dev/null; then echo 'Packaged app verification timed out'; exit 1; fi
+          wait "$reader_pid"
+          python3 -c 'import json; r=json.load(open("linux-verification.json")); assert r["ok"] and len(r["checks"]) >= 10, r; print("Packaged app checks:", len(r["checks"]))'
           if grep -Ei 'panicked at|error while loading shared libraries|symbol lookup error|cannot open display' linux-smoke.log; then exit 1; fi
           SCRIPT
           xvfb-run -a -s '-screen 0 1920x1080x24' bash /tmp/mreader-smoke.sh
@@ -57,5 +68,6 @@ jobs:
             linux-smoke.png
             linux-smoke.log
             linux-deb-info.txt
+            linux-verification.json
           if-no-files-found: error
           retention-days: 14

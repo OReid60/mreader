@@ -867,7 +867,9 @@ fn verification_plan(core: State<Arc<Core>>) -> Result<serde_json::Value> {
     }
     let files = std::env::var("MREADER_VERIFY_FILES").unwrap_or("[]".into());
     let files: Vec<String> = serde_json::from_str(&files).map_err(|e| e.to_string())?;
-    Ok(serde_json::json!({"enabled":true,"files":files}))
+    Ok(
+        serde_json::json!({"enabled":true,"files":files,"display":std::env::var("MREADER_DISPLAY").unwrap_or_default(),"offline":std::env::var("MREADER_VERIFY_OFFLINE").as_deref()==Ok("1")}),
+    )
 }
 #[tauri::command]
 fn verification_finish(

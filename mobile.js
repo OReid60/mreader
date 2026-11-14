@@ -1,7 +1,10 @@
-// Android WebView has no built-in PDF viewer. Render one page at a time
+// Android and Linux WebViews need a bundled PDF viewer. Render one page at a time
 // so large books don't allocate a canvas for every page.
 function isAndroid() {
   return /Android/i.test(globalThis.navigator?.userAgent || "");
+}
+function usesCanvasPdf() {
+  return /Android|Linux/i.test(globalThis.navigator?.userAgent || "");
 }
 async function openMobilePdf(url) {
   const pdfjs = await import("./vendor/pdf.mjs");

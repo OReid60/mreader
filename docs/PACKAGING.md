@@ -20,7 +20,7 @@ Output: `releases/android/Mreader-0.3.0-arm64.apk`, for Android 8.0+ ARM64 devic
 
 The first release creates a local signing key under `.secrets/android-release.p12`; its password is protected with Windows DPAPI for the current Windows user. Preserve the signing key and its recoverable password to publish install-compatible updates. These files must remain outside source control. The script verifies the final APK signature. Signing does not itself prove runtime behavior on a physical device.
 
-Android imports CBZ, ZIP, and PDF through its file picker, copying selected files into app-private storage. Folder and CBR/RAR imports remain desktop features. Android renders PDF pages with the bundled Apache-licensed PDF.js; desktop retains its system PDF viewer. File-based metadata backup dialogs currently remain desktop-only. Account progress sync and native JSON extensions share the Rust implementation.
+Android imports CBZ, ZIP, and PDF through its file picker, copying selected files into app-private storage. Folder and CBR/RAR imports remain desktop features. Android and Linux render PDF pages with the bundled Apache-licensed PDF.js; Windows retains its system PDF viewer. File-based metadata backup dialogs currently remain desktop-only. Account progress sync and native JSON extensions share the Rust implementation.
 
 ## Linux x64
 
