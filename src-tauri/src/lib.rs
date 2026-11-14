@@ -131,6 +131,26 @@ fn favorite(core: State<Arc<Core>>, book_id: String) -> Result<Snapshot> {
     core.snapshot()
 }
 #[tauri::command]
+fn set_book_category(
+    core: State<Arc<Core>>,
+    book_id: String,
+    category: String,
+) -> Result<Snapshot> {
+    if !matches!(category.as_str(), "Default" | "nsfw") {
+        return Err("Unknown library category".into());
+    }
+    let mut book = core.store.book(&book_id)?;
+    // Reserved metadata tags keep category assignments compatible with the
+    // existing sync protocol and older clients that preserve book tags.
+    book.tags
+        .retain(|tag| !tag.starts_with("mreader:category:"));
+    if category == "nsfw" {
+        book.tags.push("mreader:category:nsfw".into());
+    }
+    core.store.put(&book)?;
+    core.snapshot()
+}
+#[tauri::command]
 async fn chapters(core: State<'_, Arc<Core>>, book_id: String, refresh: bool) -> Result<Book> {
     let mut b = core.store.book(&book_id)?;
     if b.source != "local" && (refresh || b.chapters.is_empty()) {
@@ -199,6 +219,12 @@ fn import_into(core: &Core, paths: Vec<PathBuf>) -> Result<serde_json::Value> {
                 {
                     book.id = old.id.clone();
                     book.favorite = old.favorite;
+                    book.tags.extend(
+                        old.tags
+                            .iter()
+                            .filter(|tag| tag.starts_with("mreader:category:"))
+                            .cloned(),
+                    );
                     for c in &mut book.chapters {
                         if let Some(prev) = old
                             .chapters
@@ -294,6 +320,7 @@ async fn import_bytes(
         book.description = "Imported into this device's private library. Import the same file on another device to share reading progress.".into();
         if let Ok(old) = core.store.book(&book.id) {
             book.favorite = old.favorite;
+            book.tags.extend(old.tags.iter().filter(|tag| tag.starts_with("mreader:category:")).cloned());
         }
         core.store.put(&book)?;
         Ok(serde_json::json!({"snapshot":core.snapshot()?,"imported":1,"errors":[]}))
@@ -934,6 +961,7 @@ pub fn run() {
             add_book,
             remove_book,
             favorite,
+            set_book_category,
             chapters,
             import_files,
             import_paths,
@@ -981,6 +1009,7 @@ mod integration_tests {
         import_into(&core, vec![archive.clone()]).unwrap();
         let mut book = core.store.books().unwrap().remove(0);
         book.favorite = true;
+        book.tags.push("mreader:category:nsfw".into());
         core.store.put(&book).unwrap();
         let progress = Progress {
             book_id: book.id.clone(),
@@ -995,10 +1024,18 @@ mod integration_tests {
         assert_eq!(books.len(), 1);
         assert_eq!(books[0].chapters[0].id, progress.chapter_id);
         assert!(books[0].favorite);
+        assert!(books[0]
+            .tags
+            .iter()
+            .any(|tag| tag == "mreader:category:nsfw"));
         drop(core);
         let reopened = Core::new(root.join("data")).unwrap();
         assert_eq!(reopened.store.progress().unwrap().len(), 1);
         assert!(reopened.store.progress().unwrap()[0].completed);
+        assert!(reopened.store.books().unwrap()[0]
+            .tags
+            .iter()
+            .any(|tag| tag == "mreader:category:nsfw"));
         drop(reopened);
         std::fs::remove_dir_all(root).unwrap();
     }

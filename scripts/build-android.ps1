@@ -2,6 +2,11 @@ param([switch]$Debug)
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
 Set-Location $projectRoot
+$appConfig=Get-Content -LiteralPath src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+$appVersion=$appConfig.version
+$versionParts=$appVersion.Split('.')
+$versionCode=([int]$versionParts[0]*1000000)+([int]$versionParts[1]*1000)+[int]$versionParts[2]
+@("tauri.android.versionName=$appVersion","tauri.android.versionCode=$versionCode") | Set-Content -LiteralPath src-tauri/gen/android/app/tauri.properties -Encoding ascii
 [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass='BelowNormal'
 $env:CARGO_BUILD_JOBS='2'
 if(Test-Path "$projectRoot\.tools\cargo\bin\cargo.exe") {
@@ -68,7 +73,7 @@ if($Debug){
     }
     $buildTools=Get-ChildItem (Join-Path $env:ANDROID_HOME 'build-tools') -Directory | Sort-Object Name -Descending | Select-Object -First 1
     foreach($apk in $apks){
-      $output=Join-Path $projectRoot 'releases/android/Mreader-0.3.0-arm64.apk'
+      $output=Join-Path $projectRoot "releases/android/Mreader-$appVersion-arm64.apk"
       & (Join-Path $buildTools.FullName 'apksigner.bat') sign --ks $keystore --ks-key-alias mreader --ks-pass env:MREADER_SIGNING_PASSWORD --key-pass env:MREADER_SIGNING_PASSWORD --out $output $apk.FullName
       if($LASTEXITCODE -ne 0){throw 'APK signing failed.'}
       & (Join-Path $buildTools.FullName 'apksigner.bat') verify --verbose $output

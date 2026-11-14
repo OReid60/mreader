@@ -16,7 +16,7 @@ Prerequisites: Java 21, Android SDK 36, Android NDK, Rust's `aarch64-linux-andro
 
 The script compiles the optimized Rust library, copies it into `jniLibs`, and packages it with Gradle. Copying avoids the symbolic-link privilege required by the standard Tauri Android CLI on this Windows machine. The generated Android project must already exist; `tauri android init --ci` creates it for a fresh checkout. Keep the customized `MainActivity.kt` and `Secrets.kt` when regenerating it.
 
-Output: `releases/android/Mreader-0.3.0-arm64.apk`, for Android 8.0+ ARM64 devices, including phones and tablets. A debug build is available with `-Debug`; use the optimized release for normal reading.
+Output: `releases/android/Mreader-0.3.1-arm64.apk`, for Android 8.0+ ARM64 devices, including phones and tablets. A debug build is available with `-Debug`; use the optimized release for normal reading.
 
 The first release creates a local signing key under `.secrets/android-release.p12`; its password is protected with Windows DPAPI for the current Windows user. Preserve the signing key and its recoverable password to publish install-compatible updates. These files must remain outside source control. The script verifies the final APK signature. Signing does not itself prove runtime behavior on a physical device.
 
