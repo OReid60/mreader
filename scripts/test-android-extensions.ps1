@@ -16,14 +16,14 @@ foreach($fixture in $fixtures){
   if(-not(Test-Path $file)){Invoke-WebRequest $fixture.Url -OutFile $file -TimeoutSec 90}
 }
 # The actual APK signer, package and version are verified inside Android by the test.
-& src-tauri/gen/android/gradlew.bat -p src-tauri/gen/android :app:assembleUniversalDebug :app:assembleUniversalDebugAndroidTest -x rustBuildUniversalDebug --no-daemon --max-workers=2 --no-configuration-cache
+& src-tauri/gen/android/gradlew.bat -p src-tauri/gen/android :app:assembleArm64Debug :app:assembleArm64DebugAndroidTest -x rustBuildArm64Debug --no-daemon --max-workers=2 --no-configuration-cache
 if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
 $adb=Join-Path $env:ANDROID_HOME 'platform-tools/adb.exe'
-& $adb -s $Serial install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+& $adb -s $Serial install -r --abi arm64-v8a src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk
 if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
-$test=Get-ChildItem src-tauri/gen/android/app/build/outputs/apk/androidTest/universal/debug -Filter '*.apk'|Select-Object -First 1
+$test=Get-ChildItem src-tauri/gen/android/app/build/outputs/apk/androidTest/arm64/debug -Filter '*.apk'|Select-Object -First 1
 & $adb -s $Serial install -r $test.FullName
 if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
 $result=& $adb -s $Serial shell am instrument -w -r -e class app.mreader.desktop.ExtensionHostTest app.mreader.desktop.test/androidx.test.runner.AndroidJUnitRunner
 $result | Write-Output
-if(($result -join "`n") -notmatch 'OK \(1 test\)'){throw 'The real APK extension smoke test failed.'}
+if(($result -join "`n") -notmatch 'OK \(2 tests\)'){throw 'The real APK extension smoke tests failed.'}

@@ -45,5 +45,8 @@ Validation
   Run only on a dedicated emulator or test device; it requires network access.
   `scripts/test-android-extensions.ps1` stages the APK fixtures and runs the test
   on a dedicated emulator (never a connected personal phone).
+  It also opens the actual Rust reader, installs from the protobuf catalog,
+  reads an image through JNI, verifies the same book ID as desktop, and checks
+  that page 3 is stored as zero-based page 2 with the correct chapter page count.
 
 Third-party source API attribution is in `third-party/mihon`.
