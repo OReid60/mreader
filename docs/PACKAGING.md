@@ -2,7 +2,7 @@
 
 The Rust library is shared across Windows, Linux, and Android. Each platform still needs its own compiler and packaging tools; changing a filename does not convert an executable between operating systems.
 
-Current coordinated release: [0.3.4 progress sync fix](https://github.com/OReid60/mreader/releases/tag/v0.3.4-progress-sync). Update both devices to avoid PostgreSQL's rejection of the old NUL-separated progress keys. Existing local positions and accounts are preserved; no Supabase schema change is required. The APK, Windows installer/portable EXE, DEB, and AppImage are attached to the private release. Cross-device page-position confirmation follows installation on the phone.
+Current coordinated release: [0.3.4 progress sync fix](https://github.com/OReid60/mreader/releases/tag/v0.3.4-progress-sync). Update both devices to avoid PostgreSQL's rejection of the old NUL-separated progress keys. Existing local positions and accounts are preserved; no Supabase schema change is required. The APK, Windows installer/portable EXE, DEB, and AppImage are attached to the private release. Cross-device progress was confirmed with the installed Pixel 7 and Windows apps: Kagurabachi chapter 2 resumed at page 3 from phone to desktop, then page 4 from desktop to phone. The APK update was installed in place through paired wireless ADB.
 
 ## Windows x64
 
