@@ -37,11 +37,50 @@ pub struct Document {
     #[serde(default)]
     pub books: BTreeMap<String, Timed<Book>>,
     #[serde(default)]
+    #[serde(with = "progress_wire")]
     pub progress: BTreeMap<String, Progress>,
     #[serde(default)]
     pub extensions: BTreeMap<String, Timed<Extension>>,
     #[serde(default)]
     pub deletions: BTreeMap<String, i64>,
+}
+// SQLite and in-memory indexes can use NUL separators; PostgreSQL jsonb cannot.
+// Keep wire keys printable and derive identity from the record when reading.
+mod progress_wire {
+    use super::*;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+    pub fn serialize<S: serde::Serializer>(
+        progress: &BTreeMap<String, Progress>,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        let mut wire = BTreeMap::new();
+        for p in progress.values() {
+            let pair = serde_json::to_vec(&(&p.book_id, &p.chapter_id))
+                .map_err(serde::ser::Error::custom)?;
+            wire.insert(format!("p:{}", URL_SAFE_NO_PAD.encode(pair)), p);
+        }
+        wire.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<BTreeMap<String, Progress>, D::Error> {
+        let wire = BTreeMap::<String, Progress>::deserialize(deserializer)?;
+        let mut progress = BTreeMap::<String, Progress>::new();
+        for mut p in wire.into_values() {
+            let id = format!("{}\0{}", p.book_id, p.chapter_id);
+            if let Some(old) = progress.get(&id) {
+                let completed = old.completed || p.completed;
+                if normalized_time(old.updated) > normalized_time(p.updated) {
+                    p = old.clone();
+                }
+                p.completed = completed;
+            }
+            progress.insert(id, p);
+        }
+        Ok(progress)
+    }
 }
 impl Default for Document {
     fn default() -> Self {
@@ -563,6 +602,58 @@ async fn exchange(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn assert_jsonb_safe(value: &Value) {
+        match value {
+            Value::Object(map) => {
+                for (key, value) in map {
+                    assert!(!key.contains('\0'), "jsonb cannot store NUL keys");
+                    assert_jsonb_safe(value);
+                }
+            }
+            Value::Array(values) => {
+                for value in values {
+                    assert_jsonb_safe(value);
+                }
+            }
+            Value::String(value) => {
+                assert!(!value.contains('\0'), "jsonb cannot store NUL strings")
+            }
+            _ => {}
+        }
+    }
+    #[test]
+    fn progress_wire_keys_are_jsonb_safe_and_roundtrip_identity() {
+        let mut document = Document::default();
+        for (book, chapter, page) in [("b:é", "chapter/\"一\"", 2), ("b", "é:chapter/\"一\"", 3)]
+        {
+            let p = Progress {
+                book_id: book.into(),
+                chapter_id: chapter.into(),
+                page,
+                completed: false,
+                updated: 1234567890123,
+            };
+            document.progress.insert(format!("{book}\0{chapter}"), p);
+        }
+        let wire = serde_json::to_value(&document).unwrap();
+        assert_jsonb_safe(&wire);
+        let rows = wire["progress"].as_object().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(
+            rows.keys()
+                .all(|key| key.starts_with("p:") && key.is_ascii() && !key.contains('\0')),
+            "PostgreSQL jsonb rejects NUL even when JSON encodes it as \\u0000"
+        );
+        assert!(!serde_json::to_string(&wire).unwrap().contains("\\u0000"));
+        let restored: Document = serde_json::from_value(wire).unwrap();
+        assert_eq!(restored.progress.len(), 2);
+        assert_eq!(restored.progress["b:é\0chapter/\"一\""].page, 2);
+        assert_eq!(restored.progress["b\0é:chapter/\"一\""].page, 3);
+        // Remote keys are opaque; legacy or differently encoded keys retain the same identity.
+        let legacy = json!({"schemaVersion":1,"progress":{"old-key":{"bookId":"b","chapterId":"c","page":4,"completed":false,"updated":1234567890123}}});
+        let restored: Document = serde_json::from_value(legacy).unwrap();
+        assert_eq!(restored.progress["b\0c"].page, 4);
+    }
     fn book(id: &str) -> Book {
         serde_json::from_value(
             json!({"id":id,"title":"Test","source":"mangadex","remoteId":"id","chapters":[]}),
@@ -710,6 +801,7 @@ mod tests {
                     }
                 } else {
                     let request: Value = serde_json::from_slice(&bytes[end..end + length]).unwrap();
+                    assert_jsonb_safe(&request);
                     if !injected {
                         injected = true;
                         revision = 1;

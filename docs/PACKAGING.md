@@ -16,7 +16,7 @@ Prerequisites: Java 21, Android SDK 36, Android NDK, Rust's `aarch64-linux-andro
 
 The script compiles the optimized Rust library, copies it into `jniLibs`, and packages it with Gradle. Copying avoids the symbolic-link privilege required by the standard Tauri Android CLI on this Windows machine. The generated Android project must already exist; `tauri android init --ci` creates it for a fresh checkout. Keep the customized `MainActivity.kt` and `Secrets.kt` when regenerating it.
 
-Output: `releases/android/Mreader-0.3.1-arm64.apk`, for Android 8.0+ ARM64 devices, including phones and tablets. A debug build is available with `-Debug`; use the optimized release for normal reading.
+Output: `releases/android/Mreader-<version>-arm64.apk`, for Android 8.0+ ARM64 devices, including phones and tablets. A debug build is available with `-Debug`; use the optimized release for normal reading. Android-only packaging hotfixes can set `-Version 0.3.3` independently of the Rust core version.
 
 The first release creates a local signing key under `.secrets/android-release.p12`; its password is protected with Windows DPAPI for the current Windows user. Preserve the signing key and its recoverable password to publish install-compatible updates. These files must remain outside source control. The script verifies the final APK signature. Signing does not itself prove runtime behavior on a physical device.
 
@@ -28,7 +28,7 @@ Run `bash scripts/build-linux.sh` on Linux. It generates a DEB installer for Deb
 
 Build dependencies include GTK 3, WebKitGTK 4.1, SSL, D-Bus development headers, patchelf, and librsvg. The included `.github/workflows/packages.yml` provisions these on an Ubuntu runner and uploads build artifacts. Linux builds run in the private repository https://github.com/OReid60/mreader. The packaging workflow checks JavaScript and Rust before building, then the reusable verification workflow opens the packaged AppImage on a virtual display and checks local imports, PDF rendering, navigation, and saved progress. Artifacts are retained for 14 days; downloaded copies are kept locally under `releases/linux`.
 
-The current packages target Linux x64 and are built on Ubuntu 22.04. Older distributions have not been validated. Install the DEB with `sudo apt install ./Mreader_0.3.0_amd64.deb`, or make the AppImage executable with `chmod +x Mreader_0.3.0_amd64.AppImage` and run it.
+The current packages target Linux x64 and are built on Ubuntu 22.04. Older distributions have not been validated. Install the DEB with `sudo apt install ./Mreader_0.3.2_amd64.deb`, or make the AppImage executable with `chmod +x Mreader_0.3.2_amd64.AppImage` and run it.
 
 ## Validation
 

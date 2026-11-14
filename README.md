@@ -35,11 +35,11 @@ Backups merge metadata, progress, and preferences into the library in a transact
 
 ## Native extensions and account sync (0.3)
 
-Settings now includes native extension import, permission review, export, update by reimport, and uninstall. The bundled MangaDex example exercises the full search → chapters → page pipeline. Schema v1 is declarative JSON for JSON APIs and does not run Android APKs or scripts. See [extension authoring](docs/EXTENSIONS.md).
+Settings includes native JSON extension import, permission review, export, update by reimport, and uninstall. It also supports the real Keiyoushi APK catalog with package installation and removal: Android loads signed APKs through its source API; desktop runs them through a lazy local JVM compatibility process. See [APK sources](docs/apk-extensions.md) and [native JSON authoring](docs/EXTENSIONS.md).
 
 Managed account sync implements sign-up/sign-in, secure session storage, refresh, per-account local databases, automatic metadata/progress sync, and conflict retries. The Mreader Supabase project is configured and its sync schema is deployed. Public checks confirm anonymous table and RPC access are denied; signed-in cross-device verification remains pending. No device needs to host a server. See [account setup and validation limits](docs/ACCOUNT-SYNC.md).
 
-The extension schema and sync protocol are designed for desktop, phones, and tablets. Windows and Android build scripts are provided, along with a Linux DEB/AppImage workflow. Android targets ARM64 phones and tablets on Android 8.0+. Physical Android-device checks remain pending. See [packaging instructions and platform limits](docs/PACKAGING.md).
+Windows EXE, Linux DEB/AppImage, and Android APK builds are available. Android targets ARM64 phones and tablets on Android 8.0+. Keiyoushi source installation and chapter reading have been verified on a real phone with Android packaging hotfix 0.3.3. See [packaging instructions and platform limits](docs/PACKAGING.md).
 
 `scripts/verify-desktop.ps1` runs an isolated WebView2 integration check on display 2 without mouse or keyboard injection. It verifies real cover decoding in the rendered app, local archive navigation, PDF file loading, live built-in and native-extension reading, and downloads. Test fixtures must exist under `test-artifacts`.
 

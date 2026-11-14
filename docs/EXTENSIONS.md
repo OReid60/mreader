@@ -1,6 +1,6 @@
 # Mreader native extensions, schema v1
 
-Mreader extensions are JSON data, not Android APKs, JavaScript, or native binaries. The same manifest and stable identifiers can be used by desktop and future Android builds. The supplied [MangaDex manifest](../extensions/mangadex.mreader.json) is a complete working example.
+This document describes Mreader's native JSON extension format. The same manifest and stable identifiers work on desktop and Android. For executable Keiyoushi APKs and repository installation, see [APK extensions](apk-extensions.md). The supplied [MangaDex manifest](../extensions/mangadex.mreader.json) is a complete JSON example.
 
 Install from **Settings → Native source extensions → Import manifest**. The review shows the declared hosts before installation. Import a newer version with the same `id` to update it. Export and uninstall are also available. Removing an extension preserves title metadata and progress so reinstalling can reconnect them.
 
@@ -14,7 +14,7 @@ Install from **Settings → Native source extensions → Import manifest**. The 
 - `search` and `chapters`: endpoint `path`, JSON Pointer `items`, optional JSON Pointer `total`, `batchSize` (1–500), `fields`, and optional `templates`.
 - `pages`: endpoint `path`, JSON Pointer `items` naming an array of filename/URL strings, root-level `fields`, and a URL `template`.
 
-The first version supports JSON APIs. HTML selectors, arbitrary scripts, authentication headers, and Mihon APK compatibility are not implemented. Unknown manifest properties and unsupported schema versions are rejected. Manifests are limited to 128 KiB and API JSON to 8 MiB.
+Schema v1 supports JSON APIs. HTML selectors, arbitrary scripts, and authentication headers are outside this declarative schema; APK compatibility uses the separate source runtime. Unknown manifest properties and unsupported schema versions are rejected. Manifests are limited to 128 KiB and API JSON to 8 MiB.
 
 ## Templates and field selectors
 
@@ -42,4 +42,4 @@ Never change the meaning of an ID or generate IDs from localized titles, list po
 
 Account sync carries installed manifests, library metadata, favorites, tombstones, and progress. Device paths and downloaded bytes are excluded. Identical CBZ/ZIP/CBR/PDF archives receive a SHA-256 identity independent of their filename; import the same file on another device to reconnect it. Image-folder chapter identities depend on their naturally ordered filenames and bytes; a folder's first chapter anchors its collection identity.
 
-This repository currently produces a Windows desktop executable. The extension schema and managed sync protocol are portable, but an Android package and real-device validation have not been delivered by this Windows build.
+This repository produces Windows executables, Linux DEB/AppImage packages, and Android ARM64 APKs. Native JSON sources share the Rust implementation. APK sources use platform-specific execution hosts while keeping portable book and chapter identities for managed sync.

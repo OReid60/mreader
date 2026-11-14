@@ -33,7 +33,7 @@ if (Test-Path "$projectRoot\mobile.js") { Copy-Item "$projectRoot\mobile.js" "$p
 if (Test-Path "$projectRoot\vendor") { Copy-Item "$projectRoot\vendor" "$projectRoot\dist" -Recurse -Force }
 switch ($Action) {
     'run' { & cargo run --release --manifest-path src-tauri/Cargo.toml }
-    'build' { & cargo build --release --manifest-path src-tauri/Cargo.toml }
+    'build' { & cargo build --release --bin mreader --manifest-path src-tauri/Cargo.toml }
     'package' {
         & npm exec --yes --package=@tauri-apps/cli@2 -- tauri build --bundles nsis
         if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}

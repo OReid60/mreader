@@ -32,7 +32,7 @@ $env:WRY_ANDROID_LIBRARY='mreader_lib'
 $generated=Join-Path $env:TAURI_ANDROID_PROJECT_PATH 'app/src/main/java/app/mreader/desktop/generated'
 New-Item -ItemType Directory -Force $generated | Out-Null
 $env:WRY_ANDROID_KOTLIN_FILES_OUT_DIR=$generated
-$cargoArgs=@('ndk','-t','arm64-v8a','--platform','26','-o','gen/android/app/src/main/jniLibs','build','--lib')
+$cargoArgs=@('ndk','-t','arm64-v8a','--platform','26','-o','gen/android/app/src/main/jniLibs','rustc','--lib','--crate-type','cdylib')
 if(-not $Debug){$cargoArgs+='--release'}
 Push-Location src-tauri
 try {

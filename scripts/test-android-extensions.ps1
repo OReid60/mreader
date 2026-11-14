@@ -39,9 +39,9 @@ if($ReleaseApk){
   $appApk='src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk'
   $testApk=$test.FullName
 }
-& $adb -s $Serial install -r --abi arm64-v8a $appApk
+& $adb -s $Serial install --no-streaming -r --abi arm64-v8a $appApk
 if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
-& $adb -s $Serial install -r $testApk
+& $adb -s $Serial install --no-streaming -r $testApk
 if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
 $result=& $adb -s $Serial shell am instrument -w -r -e class app.mreader.desktop.ExtensionHostTest app.mreader.desktop.test/androidx.test.runner.AndroidJUnitRunner
 $result | Write-Output

@@ -120,15 +120,22 @@ impl Desktop {
         let mut child = command
             .spawn()
             .map_err(|e| format!("Cannot start APK runtime: {e}"))?;
-        let started=std::time::Instant::now();
-        while started.elapsed()<std::time::Duration::from_secs(60) {
+        let started = std::time::Instant::now();
+        while started.elapsed() < std::time::Duration::from_secs(60) {
             if child.try_wait().map_err(|e| e.to_string())?.is_some() {
                 return Err(format!(
                     "APK runtime stopped; see {}",
                     dir.join("runtime.log").display()
                 ));
             }
-            if matches!(tokio::time::timeout(std::time::Duration::from_secs(2),gql(&connection, "{__typename}", json!({}))).await,Ok(Ok(_))) {
+            if matches!(
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(2),
+                    gql(&connection, "{__typename}", json!({}))
+                )
+                .await,
+                Ok(Ok(_))
+            ) {
                 *self.server.lock().map_err(|e| e.to_string())? = Some(Server {
                     child,
                     connection: connection.clone(),
@@ -353,8 +360,9 @@ async fn prepare(dir: &Path) -> Result<(PathBuf, PathBuf)> {
                 output.join("suwayomi.jar"),
             )
             .map_err(|e| e.to_string())?;
-            std::fs::create_dir_all(output.join("java-runtime")).map_err(|e|e.to_string())?;
-            std::fs::rename(output.join("jre"),output.join("java-runtime/jre")).map_err(|e|e.to_string())?;
+            std::fs::create_dir_all(output.join("java-runtime")).map_err(|e| e.to_string())?;
+            std::fs::rename(output.join("jre"), output.join("java-runtime/jre"))
+                .map_err(|e| e.to_string())?;
             Ok(())
         })
         .await
