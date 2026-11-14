@@ -1,0 +1,61 @@
+name: Verify packaged Linux app
+on:
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: Packaging workflow run ID
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  packaged-app:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mreader-linux
+          path: packages
+          run-id: ${{ inputs.source_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install headless display and runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libfuse2 xvfb xauth imagemagick
+      - name: Validate packages and extract AppImage
+        run: |
+          cd packages
+          sha256sum --check SHA256SUMS
+          dpkg-deb --info ./*.deb > ../linux-deb-info.txt
+          chmod +x ./*.AppImage
+          ./*.AppImage --appimage-extract > ../linux-extraction.log
+      - name: Launch packaged app on a virtual display
+        env:
+          MREADER_DATA_DIR: ${{ runner.temp }}/mreader-smoke
+          WEBKIT_DISABLE_COMPOSITING_MODE: '1'
+        run: |
+          cat > /tmp/mreader-smoke.sh <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          export APPDIR="$PWD/packages/squashfs-root"
+          "$APPDIR/AppRun" > linux-smoke.log 2>&1 &
+          reader_pid=$!
+          trap 'kill "$reader_pid" 2>/dev/null || true' EXIT
+          sleep 12
+          kill -0 "$reader_pid"
+          import -window root linux-smoke.png
+          if grep -Ei 'panicked at|error while loading shared libraries|symbol lookup error|cannot open display' linux-smoke.log; then exit 1; fi
+          SCRIPT
+          xvfb-run -a -s '-screen 0 1920x1080x24' bash /tmp/mreader-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mreader-linux-validation
+          path: |
+            linux-smoke.png
+            linux-smoke.log
+            linux-deb-info.txt
+          if-no-files-found: error
+          retention-days: 14
