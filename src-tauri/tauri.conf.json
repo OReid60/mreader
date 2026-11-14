@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Mreader",
+  "version": "0.3.0",
+  "identifier": "app.mreader.desktop",
+  "build": {
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Mreader — Your next chapter",
+        "width": 1440,
+        "height": 960,
+        "minWidth": 900,
+        "minHeight": 640,
+        "backgroundColor": "#111214",
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; connect-src 'self' blob: ipc: http://ipc.localhost; object-src blob:; frame-src blob:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "targets": [
+      "nsis",
+      "deb",
+      "appimage"
+    ],
+    "shortDescription": "Fast manga reader with native extensions and account sync",
+    "category": "Utility"
+  }
+}
