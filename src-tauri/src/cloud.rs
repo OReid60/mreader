@@ -126,6 +126,7 @@ impl Document {
             }
             if !matches!(b.value.source.as_str(), "local" | "mangadex" | "komga")
                 && !b.value.source.starts_with("ext:")
+                && !b.value.source.starts_with("apk:")
             {
                 return Err("Sync document contains an unknown source".into());
             }

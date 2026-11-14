@@ -9,6 +9,7 @@ pub struct Sources {
     pub client: Client,
     restricted: Client,
     pub extensions: crate::extensions::Registry,
+    pub apk: crate::apk::Engine,
     gate: Mutex<Instant>,
 }
 #[derive(Clone)]
@@ -52,6 +53,7 @@ impl Sources {
                 .build()
                 .map_err(|e| e.to_string())?,
             extensions: crate::extensions::Registry::default(),
+            apk: crate::apk::Engine::default(),
             client: Client::builder()
                 .user_agent("Mreader/0.2 (desktop manga reader)")
                 .connect_timeout(Duration::from_secs(15))
@@ -175,6 +177,9 @@ impl Sources {
         offset: usize,
         cfg: &Settings,
     ) -> Result<Catalog> {
+        if let Some(id) = source.strip_prefix("apk:") {
+            return self.apk.search(id, query, offset.max(1)).await;
+        }
         if let Some(id) = source.strip_prefix("ext:") {
             return self
                 .extensions
@@ -232,6 +237,9 @@ impl Sources {
         }
     }
     pub async fn chapters(&self, b: &Book, cfg: &Settings) -> Result<Vec<Chapter>> {
+        if b.source.starts_with("apk:") {
+            return self.apk.chapters(b).await;
+        }
         if let Some(id) = b.source.strip_prefix("ext:") {
             return self
                 .extensions
@@ -242,6 +250,7 @@ impl Sources {
         valid_id(&b.remote_id)?;
         let mut chapters = Vec::new();
         let mut offset = 0;
+        let mut publisher_links = 0;
         loop {
             let previous_offset = offset;
             let (rows, total) = if b.source == "mangadex" {
@@ -260,6 +269,19 @@ impl Sources {
                         ],
                     )
                     .await?;
+                publisher_links += v["data"]
+                    .as_array()
+                    .map(|rows| {
+                        rows.iter()
+                            .filter(|r| {
+                                !r["attributes"]["externalUrl"]
+                                    .as_str()
+                                    .unwrap_or("")
+                                    .is_empty()
+                            })
+                            .count()
+                    })
+                    .unwrap_or(0);
                 let rows = v["data"]
                     .as_array()
                     .ok_or("Invalid chapter feed")?
@@ -301,6 +323,9 @@ impl Sources {
                 break;
             }
         }
+        if chapters.is_empty() && publisher_links > 0 {
+            return Err(format!("MangaDex lists {publisher_links} publisher links for this title in {}. These chapters are read on the publisher’s website; MangaDex does not host their pages. Try a different installed source or language.",cfg.language));
+        }
         for c in &mut chapters {
             if let Some(old) = b
                 .chapters
@@ -314,6 +339,9 @@ impl Sources {
         Ok(chapters)
     }
     pub async fn manifest(&self, b: &Book, c: &Chapter, cfg: &Settings) -> Result<Manifest> {
+        if b.source.starts_with("apk:") {
+            return self.apk.manifest(b, c).await;
+        }
         if let Some(id) = b.source.strip_prefix("ext:") {
             return self.extensions.get(id)?.manifest(self, b, c).await;
         }
@@ -365,6 +393,9 @@ impl Sources {
         })
     }
     pub async fn page(&self, url: &str, source: &str, cfg: &Settings) -> Result<Vec<u8>> {
+        if source.starts_with("apk:") {
+            return self.apk.image(source, url).await;
+        }
         let response = if let Some(id) = source.strip_prefix("ext:") {
             self.extension_response(&self.extensions.get(id)?, url)
                 .await?

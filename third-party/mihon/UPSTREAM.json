@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/mihonapp/mihon",
+  "license": "Apache-2.0",
+  "files": "source-api and selected network helpers",
+  "commit": "4823ba69ca65fa707fb89406f3a4c43c9e0053dd"
+}

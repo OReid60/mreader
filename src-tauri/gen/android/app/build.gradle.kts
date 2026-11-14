@@ -22,6 +22,7 @@ android {
         applicationId = "app.mreader.desktop"
         minSdk = 26
         targetSdk = 36
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
     }
@@ -62,6 +63,7 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_1_8
+        freeCompilerArgs.add("-Xjvm-default=all")
     }
 }
 
@@ -70,6 +72,20 @@ rust {
 }
 
 dependencies {
+    implementation("com.squareup.okhttp3:okhttp:5.3.2")
+    implementation("com.squareup.okhttp3:okhttp-brotli:5.3.2")
+    implementation("com.squareup.okhttp3:okhttp-zstd:5.3.2")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:5.3.2")
+    implementation("com.squareup.okhttp3:logging-interceptor:5.3.2")
+    implementation("org.jsoup:jsoup:1.21.2")
+    implementation("io.reactivex:rxjava:1.3.8")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-protobuf:1.9.0")
+    implementation("com.github.zhanghai.quickjs-java:quickjs-android:547f5b1597")
+    implementation("androidx.preference:preference-ktx:1.2.1")
+    implementation("com.github.null2264.injekt:injekt-core:4135455a2a")
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.activity:activity-ktx:1.10.1")
@@ -77,6 +93,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
+    androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
 }
 

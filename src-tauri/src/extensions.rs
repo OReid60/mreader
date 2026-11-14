@@ -359,6 +359,7 @@ impl Extension {
     ) -> Result<Vec<Chapter>> {
         let mut offset = 0;
         let mut chapters = Vec::new();
+        let mut publisher_links = 0;
         loop {
             let args = BTreeMap::from([
                 ("id".into(), book.remote_id.clone()),
@@ -378,6 +379,16 @@ impl Extension {
                 .and_then(Value::as_array)
                 .ok_or("Extension chapter items must be a JSON array")?;
             for item in items {
+                // MangaDex's external entries contain publisher URLs, not hosted pages.
+                if self.base_url.trim_end_matches('/') == "https://api.mangadex.org"
+                    && !item["attributes"]["externalUrl"]
+                        .as_str()
+                        .unwrap_or("")
+                        .is_empty()
+                {
+                    publisher_links += 1;
+                    continue;
+                }
                 let v = mapping(&self.chapters.fields, item);
                 let id = v.get("id").cloned().unwrap_or_default();
                 if id.is_empty() {
@@ -404,6 +415,9 @@ impl Extension {
             if items.is_empty() || offset >= total || offset >= 10000 {
                 break;
             }
+        }
+        if chapters.is_empty() && publisher_links > 0 {
+            return Err(format!("MangaDex lists {publisher_links} publisher links in {language}, but does not host their pages. Read on the publisher’s website or select a different installed source."));
         }
         Ok(chapters)
     }

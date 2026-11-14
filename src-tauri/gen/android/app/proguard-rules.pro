@@ -1,4 +1,14 @@
 # Add project specific ProGuard rules here.
+-keep class app.mreader.desktop.ExtensionHost { *; }
+-keep class eu.kanade.tachiyomi.** { *; }
+-keep class uy.kohesive.injekt.** { *; }
+-keep class rx.** { *; }
+-keep class okhttp3.** { *; }
+-keep class okio.** { *; }
+-keep class org.jsoup.** { *; }
+-keep class kotlinx.serialization.** { *; }
+-keep class kotlin.** { *; }
+-keep class kotlinx.coroutines.** { *; }
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
 #

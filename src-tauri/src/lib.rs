@@ -1,3 +1,4 @@
+mod apk;
 mod cloud;
 mod credentials;
 mod extensions;
@@ -32,6 +33,7 @@ impl Core {
         let cloud = cloud::Cloud::new(&data)?;
         let profile = cloud.profile_dir(&data)?;
         let sources = sources::Sources::new()?;
+        sources.apk.set_dir(&data.join("apk-extensions"))?;
         sources.extensions.set_dir(&profile.join("extensions"))?;
         Ok(Self {
             store: store::Store::open(&profile.join("library.sqlite"))?,
@@ -97,10 +99,12 @@ async fn search_source(
 fn add_book(core: State<Arc<Core>>, mut book: Book) -> Result<Snapshot> {
     if let Some(id) = book.source.strip_prefix("ext:") {
         core.sources.extensions.get(id)?;
-    } else if !matches!(book.source.as_str(), "mangadex" | "komga") {
+    } else if !book.source.starts_with("apk:")
+        && !matches!(book.source.as_str(), "mangadex" | "komga")
+    {
         return Err("Local books must be added using Import".into());
     }
-    if book.source.starts_with("ext:") {
+    if book.source.starts_with("ext:") || book.source.starts_with("apk:") {
         if book.remote_id.is_empty()
             || book.remote_id.len() > 512
             || book.remote_id.chars().any(char::is_control)
@@ -157,6 +161,14 @@ async fn chapters(core: State<'_, Arc<Core>>, book_id: String, refresh: bool) ->
         let mut chapters = core.sources.chapters(&b, &core.settings()?).await?;
         b = core.store.book(&book_id)?;
         for chapter in &mut chapters {
+            if chapter.pages == 0 {
+                chapter.pages = b
+                    .chapters
+                    .iter()
+                    .find(|c| c.id == chapter.id)
+                    .map(|c| c.pages)
+                    .unwrap_or(0);
+            }
             if let Some(old) = b
                 .chapters
                 .iter()
@@ -352,6 +364,15 @@ async fn open_chapter(
             .remove(&format!("{}:{}", b.id, c.id));
         core.manifest(&b, c).await?.urls.len()
     };
+    if b.source != "local" && !c.downloaded && pages > 0 {
+        let mut current = core.store.book(&book_id)?;
+        if let Some(chapter) = current.chapters.iter_mut().find(|c| c.id == chapter_id) {
+            if chapter.pages != pages {
+                chapter.pages = pages;
+                core.store.put(&current)?;
+            }
+        }
+    }
     Ok(serde_json::json!({"pages":pages,"pdf":c.path.to_lowercase().ends_with(".pdf")}))
 }
 #[tauri::command]
@@ -439,7 +460,7 @@ async fn cover_bytes(core: Arc<Core>, book: Book) -> Result<Vec<u8>> {
                 .page(url.as_str(), "mangadex", &core.settings()?)
                 .await?
         }
-        source if source.starts_with("ext:") => {
+        source if source.starts_with("ext:") || source.starts_with("apk:") => {
             core.sources
                 .page(&book.cover, source, &core.settings()?)
                 .await?
@@ -726,17 +747,18 @@ async fn restore_backup(core: State<'_, Arc<Core>>) -> Result<Snapshot> {
                 book = checked
             } else {
                 let extension = book.source.strip_prefix("ext:");
+                let apk = book.source.starts_with("apk:");
                 if let Some(id) = extension {
                     core.sources.extensions.get(id)?;
-                } else if !matches!(book.source.as_str(), "mangadex" | "komga" | "local") {
+                } else if !apk && !matches!(book.source.as_str(), "mangadex" | "komga" | "local") {
                     return Err("Backup contains an unknown source".into());
                 }
-                if extension.is_none() && book.source != "local" {
+                if extension.is_none() && !apk && book.source != "local" {
                     sources::valid_id(&book.remote_id)?;
                 }
                 book.path.clear();
                 for c in &mut book.chapters {
-                    if extension.is_none() && book.source != "local" {
+                    if extension.is_none() && !apk && book.source != "local" {
                         sources::valid_id(&c.id)?;
                     }
                     c.path.clear();
@@ -771,6 +793,30 @@ async fn restore_backup(core: State<'_, Arc<Core>>) -> Result<Snapshot> {
 #[tauri::command]
 fn extension_list(core: State<Arc<Core>>) -> Result<Vec<extensions::Extension>> {
     core.sources.extensions.list()
+}
+#[tauri::command]
+fn apk_state(core: State<Arc<Core>>) -> Result<apk::State> {
+    core.sources.apk.state()
+}
+#[tauri::command]
+async fn apk_repository(
+    core: State<'_, Arc<Core>>,
+    url: String,
+    trust_key: Option<String>,
+) -> Result<apk::State> {
+    core.sources.apk.repository(url, trust_key).await
+}
+#[tauri::command]
+async fn apk_install(
+    core: State<'_, Arc<Core>>,
+    repository: String,
+    package: String,
+) -> Result<apk::State> {
+    core.sources.apk.install(repository, package).await
+}
+#[tauri::command]
+async fn apk_remove(core: State<'_, Arc<Core>>, package: String) -> Result<apk::State> {
+    core.sources.apk.remove(package).await
 }
 #[tauri::command]
 async fn extension_install(
@@ -975,6 +1021,10 @@ pub fn run() {
             export_backup,
             restore_backup,
             extension_list,
+            apk_state,
+            apk_repository,
+            apk_install,
+            apk_remove,
             extension_install,
             extension_remove,
             extension_example,
@@ -986,8 +1036,15 @@ pub fn run() {
             verification_plan,
             verification_finish
         ])
-        .run(context)
-        .expect("Mreader failed to start");
+        .build(context)
+        .expect("Mreader failed to start")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                if let Some(core) = app.try_state::<Arc<Core>>() {
+                    core.sources.apk.stop();
+                }
+            }
+        });
 }
 
 #[cfg(test)]

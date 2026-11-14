@@ -16,10 +16,15 @@ const { pathToFileURL } = require('node:url');
       const settings = { theme:'dark',language:'en',direction:'ltr',fit:'width',dataSaver:false,komgaUrl:'',komgaUser:'' };
       const books = [95,35,347,103,4,7].map((count,index) => ({ id:`test:${index}`, title:`Library title ${index + 1}`,source:'local',author:'Layout fixture',description:'Synthetic test fixture',tags:['Action'],favorite:false,status:'Local',path:'fixture.cbz',chapters:Array.from({length:count},(_,n)=>({id:`c:${index}:${n}`,number:String(n+1),title:'Chapter',pages:3,downloaded:false,path:''})) }));
       const snapshot = () => structuredClone({ books,progress:[],settings,dataDir:'Layout test' });
+      const extension={name:'MANGA Plus by SHUEISHA',package:'fixture.publisher',version:'1.6.1',versionCode:106001,api:'1.6',contentWarning:1,sources:[{id:'1998944621602463790',name:'MANGA Plus by SHUEISHA',language:'en'}]};
+      const apk={repositories:[{url:'https://fixture.test/index.pb',catalog:{name:'Test catalog',extensions:[extension]}}],installed:[]};
       window.__TAURI__ = {
         core: { invoke: async (name,args) => {
           if (name === 'snapshot') return snapshot();
           if (name === 'extension_list') return [];
+          if (name === 'apk_state') return structuredClone(apk);
+          if (name === 'apk_install') {apk.installed=[{extension,repository:apk.repositories[0].url}];return structuredClone(apk);}
+          if (name === 'apk_remove') {apk.installed=[];return structuredClone(apk);}
           if (name === 'cloud_status') return {configured:true,signedIn:false};
           if (name === 'verification_plan') return {enabled:false};
           if (name === 'cover_data') throw Error('Synthetic cover is provided by the layout test');
@@ -68,6 +73,15 @@ const { pathToFileURL } = require('node:url');
     await phone.locator('[data-action="mobile-menu"]').click();
     await phone.locator('#mobile-sheet [data-page="Settings"]').click();
     assert(await phone.locator('#account-form').isVisible());
+    await phone.locator('[data-action="apk-install"]').click();
+    await phone.waitForFunction(()=>featureState.apk.installed.length===1);
+    assert(await phone.locator('[data-action="apk-remove"]').isVisible());
+    assert(await phone.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    await phone.locator('.mobile-bottom [data-page="Browse"]').click();
+    assert.equal(await phone.locator('#source option[value="apk:1998944621602463790"]').count(),1);
+    await phone.locator('.mobile-bottom [data-page="Settings"]').click();
+    await phone.locator('[data-action="apk-remove"]').click();
+    await phone.waitForFunction(()=>featureState.apk.installed.length===0);
     await phone.locator('.mobile-bottom [data-page="Library"]').click();
     await phone.locator('[data-action="mobile-search"]').click();
     await phone.locator('#search').fill('not-present');
