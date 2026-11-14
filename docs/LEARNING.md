@@ -29,6 +29,8 @@ Next, follow `favorite()` from `app.js` into the Rust command and then the store
 
 Progress sync uses a revision number to avoid overwriting another device's newer work. Think of a save request as “save this only if the server is still at revision 12.” If another device saved revision 13 first, the app fetches it, merges changes, and retries.
 
+The 0.3.4 sync fix illustrates a second boundary: valid JSON is not always valid database input. Local progress identities used a NUL separator between book and chapter IDs. JSON can encode that separator as `\u0000`, but PostgreSQL `jsonb` rejects it. The Rust serializer now encodes the pair as printable base64url text for transport and reconstructs the local identity when reading it. This preserves existing local positions without changing the database schema. Both devices should run 0.3.4 or later before testing progress sync.
+
 Never put a Supabase service-role key or account password into frontend code. Public project keys identify the service; database row-level security decides which signed-in user can access a row.
 
 ## Check compatibility with evidence
