@@ -26,7 +26,9 @@ Android imports CBZ, ZIP, and PDF through its file picker, copying selected file
 
 Run `bash scripts/build-linux.sh` on Linux. It generates a DEB installer for Debian/Ubuntu and an AppImage for portable execution under `releases/linux`.
 
-Build dependencies include GTK 3, WebKitGTK 4.1, SSL, D-Bus development headers, patchelf, and librsvg. The included `.github/workflows/packages.yml` provisions these on an Ubuntu runner and uploads build artifacts. A Linux build host is still required; this Windows workstation currently has no usable Linux environment. The workflow has not been dispatched from this workspace.
+Build dependencies include GTK 3, WebKitGTK 4.1, SSL, D-Bus development headers, patchelf, and librsvg. The included `.github/workflows/packages.yml` provisions these on an Ubuntu runner and uploads build artifacts. Linux builds run in the private repository https://github.com/OReid60/mreader. The packaging workflow checks JavaScript and Rust before building, then the reusable verification workflow opens the packaged AppImage on a virtual display and checks local imports, PDF rendering, navigation, and saved progress. Artifacts are retained for 14 days; downloaded copies are kept locally under `releases/linux`.
+
+The current packages target Linux x64 and are built on Ubuntu 22.04. Older distributions have not been validated. Install the DEB with `sudo apt install ./Mreader_0.3.0_amd64.deb`, or make the AppImage executable with `chmod +x Mreader_0.3.0_amd64.AppImage` and run it.
 
 ## Validation
 
