@@ -46,3 +46,5 @@ The extension schema and sync protocol are designed for desktop, phones, and tab
 Independent project inspired by Mihon. Not affiliated with Mihon, MangaDex, or Komga. Source availability and chapter availability depend on those services.
 
 Learning to code? Follow [one page turn through the app](docs/LEARNING.md).
+
+Linux packages are built and checked through the [private GitHub Actions workflow](https://github.com/OReid60/mreader/actions/workflows/packages.yml). The `mreader-linux` artifact contains the DEB, AppImage, and SHA-256 checksums; `mreader-linux-validation` contains the packaged-reader report and virtual-display screenshot.
