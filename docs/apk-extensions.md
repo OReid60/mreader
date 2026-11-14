@@ -50,3 +50,17 @@ Validation
   that page 3 is stored as zero-based page 2 with the correct chapter page count.
 
 Third-party source API attribution is in `third-party/mihon`.
+
+Android release verification
+----------------------------
+
+Android packaging hotfixes can use a version independent of the Rust core, e.g.
+`scripts/build-android.ps1 -Version 0.3.3` (requires Python 3 for the standard-library
+DEX namespace check). App-private optimized classes are repackaged under
+`app.mreader.internal`, so independently obfuscated extension classes cannot be
+shadowed by app classes with short names such as `o`.
+
+Before uploading, test the actual signed, optimized APK, not just a debug build:
+`scripts/test-android-extensions.ps1 -ReleaseApk releases/android/Mreader-0.3.3-arm64.apk`.
+The test runner is signed with the same local release identity and installs only
+onto the dedicated emulator. It exercises the APK host and real Rust bridge.

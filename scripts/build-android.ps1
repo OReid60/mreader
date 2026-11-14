@@ -1,9 +1,9 @@
-param([switch]$Debug)
+param([switch]$Debug,[ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version)
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
 Set-Location $projectRoot
 $appConfig=Get-Content -LiteralPath src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
-$appVersion=$appConfig.version
+$appVersion=if($Version){$Version}else{$appConfig.version}
 $versionParts=$appVersion.Split('.')
 $versionCode=([int]$versionParts[0]*1000000)+([int]$versionParts[1]*1000)+[int]$versionParts[2]
 @("tauri.android.versionName=$appVersion","tauri.android.versionCode=$versionCode") | Set-Content -LiteralPath src-tauri/gen/android/app/tauri.properties -Encoding ascii
@@ -78,6 +78,8 @@ if($Debug){
       if($LASTEXITCODE -ne 0){throw 'APK signing failed.'}
       & (Join-Path $buildTools.FullName 'apksigner.bat') verify --verbose $output
       if($LASTEXITCODE -ne 0){throw 'APK signature validation failed.'}
+      & python scripts/check-apk-namespaces.py $output
+      if($LASTEXITCODE -ne 0){throw 'APK extension namespace isolation failed.'}
     }
   }finally{Remove-Item Env:MREADER_SIGNING_PASSWORD -ErrorAction SilentlyContinue}
 }

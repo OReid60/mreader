@@ -40,11 +40,15 @@ object ExtensionHost {
     @Synchronized private fun load(context: Context, args: JSONObject): JSONArray {
         val file=File(args.getString("path"))
         val pm=context.packageManager
-        val info=pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_META_DATA or PackageManager.GET_SIGNING_CERTIFICATES)
+        val modern=android.os.Build.VERSION.SDK_INT>=28
+        val signatureFlag=if(modern)PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+        val info=pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_META_DATA or signatureFlag)
             ?: error("Not a valid Android extension APK")
         require(info.packageName==args.getString("package")) { "APK package does not match catalog" }
-        require(info.longVersionCode==args.getLong("versionCode")) { "APK version does not match catalog" }
-        val fingerprints=info.signingInfo?.apkContentsSigners?.map {digest(it.toByteArray())}.orEmpty()
+        val version=if(modern)info.longVersionCode else info.versionCode.toLong()
+        require(version==args.getLong("versionCode")) { "APK version does not match catalog" }
+        val signatures=if(modern)info.signingInfo?.apkContentsSigners else info.signatures
+        val fingerprints=signatures?.map {digest(it.toByteArray())}.orEmpty()
         require(fingerprints.size==1 && fingerprints.single()==args.getString("signingKey").lowercase()) { "APK signer does not match trusted repository" }
         val app=info.applicationInfo ?: error("Missing extension metadata")
         val meta=app.metaData ?: error("Missing extension metadata")
