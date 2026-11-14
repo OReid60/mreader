@@ -36,3 +36,9 @@ Never put a Supabase service-role key or account password into frontend code. Pu
 An APK can compile successfully and still fail on some devices. Our first native library used 4 KiB ELF alignment. Android also supports devices with 16 KiB memory pages, so `src-tauri/build.rs` adds the NDK linker flags for both maximum and common page sizes. Validate the compiled library with `llvm-readelf` and the final APK with `zipalign -c -P 16 4`. These checks complement, rather than replace, a device test.
 
 Reference: [Android's page-size guidance](https://developer.android.com/guide/practices/page-sizes).
+
+## Git and remote builds
+
+`git add` selects files for the next snapshot. `git commit` records that snapshot locally. `git push` uploads committed history to the private repository. Ignored files, such as local manga and signing keys, are not part of that history.
+
+The workflow in `.github/workflows/packages.yml` runs on a fresh Linux machine. It installs dependencies, prepares the interface assets, runs checks, and produces installers. Build order matters: Rust embeds the interface files, so they must exist before compiling native tests. The resulting DEB and AppImage files are uploaded as an Actions artifact, separate from the source commit.
