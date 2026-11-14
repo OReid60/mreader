@@ -650,7 +650,7 @@ mod tests {
         assert_eq!(restored.progress["b:é\0chapter/\"一\""].page, 2);
         assert_eq!(restored.progress["b\0é:chapter/\"一\""].page, 3);
         // Remote keys are opaque; legacy or differently encoded keys retain the same identity.
-        let legacy = json!({"schemaVersion":1,"progress":{"old-key":{"bookId":"b","chapterId":"c","page":4,"completed":false,"updated":1234567890123}}});
+        let legacy = json!({"schemaVersion":1,"progress":{"old-key":{"bookId":"b","chapterId":"c","page":4,"completed":false,"updated":1234567890123_i64}}});
         let restored: Document = serde_json::from_value(legacy).unwrap();
         assert_eq!(restored.progress["b\0c"].page, 4);
     }
