@@ -120,14 +120,15 @@ impl Desktop {
         let mut child = command
             .spawn()
             .map_err(|e| format!("Cannot start APK runtime: {e}"))?;
-        for _ in 0..120 {
+        let started=std::time::Instant::now();
+        while started.elapsed()<std::time::Duration::from_secs(60) {
             if child.try_wait().map_err(|e| e.to_string())?.is_some() {
                 return Err(format!(
                     "APK runtime stopped; see {}",
                     dir.join("runtime.log").display()
                 ));
             }
-            if gql(&connection, "{__typename}", json!({})).await.is_ok() {
+            if matches!(tokio::time::timeout(std::time::Duration::from_secs(2),gql(&connection, "{__typename}", json!({}))).await,Ok(Ok(_))) {
                 *self.server.lock().map_err(|e| e.to_string())? = Some(Server {
                     child,
                     connection: connection.clone(),
@@ -302,9 +303,9 @@ async fn prepare(dir: &Path) -> Result<(PathBuf, PathBuf)> {
         .unwrap_or_else(|| dir.join(VERSION));
     let jar = home.join("suwayomi.jar");
     let java = home.join(if cfg!(target_os = "windows") {
-        "jre/bin/java.exe"
+        "java-runtime/jre/bin/java.exe"
     } else {
-        "jre/bin/java"
+        "java-runtime/jre/bin/java"
     });
     if jar.exists()
         && java.exists()
@@ -352,6 +353,8 @@ async fn prepare(dir: &Path) -> Result<(PathBuf, PathBuf)> {
                 output.join("suwayomi.jar"),
             )
             .map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(output.join("java-runtime")).map_err(|e|e.to_string())?;
+            std::fs::rename(output.join("jre"),output.join("java-runtime/jre")).map_err(|e|e.to_string())?;
             Ok(())
         })
         .await
@@ -411,7 +414,7 @@ async fn prepare(dir: &Path) -> Result<(PathBuf, PathBuf)> {
                 let target = if relative == Path::new("bin/Suwayomi-Server.jar") {
                     output.join("suwayomi.jar")
                 } else if relative.starts_with("jre") {
-                    output.join(relative)
+                    output.join("java-runtime").join(relative)
                 } else {
                     continue;
                 };

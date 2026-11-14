@@ -27,6 +27,7 @@ suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
 }
 suspend fun Call.awaitSuccess(): Response = await().also { if (!it.isSuccessful) {val code=it.code;it.close();throw HttpException(code)} }
 fun OkHttpClient.newCachelessCallWithProgress(request: Request, listener: ProgressListener, existingSize: Long=0L): Call = newBuilder().cache(null).addNetworkInterceptor { chain ->
-    val response=chain.proceed(request.newBuilder().apply {if(existingSize>0)header("Range","bytes=$existingSize-")}.build())
+    val current=chain.request()
+    val response=chain.proceed(current.newBuilder().apply {if(existingSize>0 && current.header("Range")==null)header("Range","bytes=$existingSize-")}.build())
     response.newBuilder().body(ProgressResponseBody(response.body,listener,if(response.code==206)existingSize else 0)).build()
 }.build().newCall(request)

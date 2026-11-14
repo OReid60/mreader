@@ -2,4 +2,5 @@ Mreader incorporates the source-api and selected network helpers from Mihon
 (https://github.com/mihonapp/mihon), Copyright the Mihon contributors,
 under the Apache License 2.0 (LICENSE in this directory).
 Downloaded 2026-11-14. Local changes: removed the Compose-only Stable annotation;
-network service and coroutine helpers are supplied by Mreader.
+network service and coroutine helpers are supplied by Mreader; HttpSource bridges
+the modern getImageRequest hook to the legacy imageRequest hook.

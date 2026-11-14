@@ -20,6 +20,7 @@ import java.io.File
 import java.security.MessageDigest
 
 /** Invoked on Rust's blocking worker pool, never the Android UI thread. */
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 object ExtensionHost {
     private val sources = java.util.concurrent.ConcurrentHashMap<String, Source>()
     private val packages = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
@@ -31,6 +32,7 @@ object ExtensionHost {
         Injekt.addSingleton(NetworkHelper(context.applicationContext))
         Injekt.addSingleton(eu.kanade.tachiyomi.network.JavaScriptEngine(context.applicationContext))
         Injekt.addSingleton(Json { ignoreUnknownKeys = true; explicitNulls = false })
+        Injekt.addSingleton<kotlinx.serialization.protobuf.ProtoBuf>(kotlinx.serialization.protobuf.ProtoBuf { encodeDefaults = true })
         initialized = true
     }
     private fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
@@ -127,6 +129,7 @@ object ExtensionHost {
         }
         JSONObject().put("data",result).toString()
     } catch(e: Throwable) {
-        JSONObject().put("error", "${e.javaClass.simpleName}: ${e.message ?: "Extension failed"}").toString()
+        val root=generateSequence(e){it.cause}.take(8).last()
+        JSONObject().put("error", "${e.javaClass.simpleName}: ${root.javaClass.simpleName}: ${root.message ?: e.message ?: "Extension failed"}".take(2000)).toString()
     }
 }

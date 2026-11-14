@@ -405,7 +405,7 @@ abstract class HttpSource : CatalogueSource {
     protected open fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
 
     suspend fun getImage(page: Page, existingSize: Long = 0L): Response {
-        return client.newCachelessCallWithProgress(imageRequest(page), page, existingSize)
+        return client.newCachelessCallWithProgress(getImageRequest(page), page, existingSize)
             .awaitSuccess()
     }
 
@@ -418,6 +418,9 @@ abstract class HttpSource : CatalogueSource {
     protected open fun imageRequest(page: Page): Request {
         return GET(page.imageUrl!!, headers)
     }
+
+    /** Modern 1.6 request hook; delegates to the legacy hook for 1.4 APKs. */
+    open fun getImageRequest(page: Page): Request = imageRequest(page)
 
     /**
      * Assigns the url of the chapter without the scheme and domain. It saves some redundancy from
