@@ -30,8 +30,16 @@ impl Store {
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; CREATE TABLE IF NOT EXISTS books(id TEXT PRIMARY KEY, data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS progress(book TEXT NOT NULL,chapter TEXT NOT NULL,page INTEGER NOT NULL,completed INTEGER NOT NULL,updated INTEGER NOT NULL,PRIMARY KEY(book,chapter)); CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY,data TEXT NOT NULL);").map_err(|e|e.to_string())?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS sync_meta(kind TEXT NOT NULL,key TEXT NOT NULL,updated INTEGER NOT NULL,PRIMARY KEY(kind,key));").map_err(|e|e.to_string())?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS source_choices(id TEXT PRIMARY KEY,data TEXT NOT NULL,updated INTEGER NOT NULL);").map_err(|e|e.to_string())?;
+        db.execute_batch("CREATE TABLE IF NOT EXISTS download_queue(id INTEGER PRIMARY KEY,data TEXT NOT NULL);").map_err(|e|e.to_string())?;
         Ok(Self(Mutex::new(db)))
     }
+    pub fn queue_load<T:serde::de::DeserializeOwned+Default>(&self)->Result<T>{
+        let db=self.0.lock().map_err(|e|e.to_string())?;
+        match db.query_row("SELECT data FROM download_queue WHERE id=1",[],|r|r.get::<_,String>(0)){
+            Ok(s)=>serde_json::from_str(&s).map_err(|e|e.to_string()),Err(rusqlite::Error::QueryReturnedNoRows)=>Ok(T::default()),Err(e)=>Err(e.to_string())
+        }
+    }
+    pub fn queue_save<T:serde::Serialize>(&self,value:&T)->Result<()>{self.0.lock().map_err(|e|e.to_string())?.execute("INSERT OR REPLACE INTO download_queue VALUES(1,?1)",[serde_json::to_string(value).map_err(|e|e.to_string())?]).map_err(|e|e.to_string())?;Ok(())}
     pub fn books(&self) -> Result<Vec<Book>> {
         let db = self.0.lock().map_err(|e| e.to_string())?;
         let mut q = db

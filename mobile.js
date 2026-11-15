@@ -356,7 +356,7 @@ function bookCategory(book) {
 }
 function categoryTabs(mobile = false) {
   const names = state.categories || ['Default','nsfw'];
-  return `<nav class="${mobile ? 'mobile-categories' : 'category-tabs'}" aria-label="Library categories">${names.map(name => `<button data-action="mobile-category" data-category="${esc(name)}" class="${(state.mobileCategory || 'Default') === name ? 'active' : ''}">${esc(name)}</button>`).join('')}${button('mobile-manage-categories', 'Catagories', 'category-manage', 'aria-label="Catagories"')}</nav>`;
+  return `<nav class="${mobile ? 'mobile-categories' : 'category-tabs'}" aria-label="Library categories">${names.map(name => `<button data-action="mobile-category" data-category="${esc(name)}" class="${(state.mobileCategory || 'Default') === name ? 'active' : ''}">${esc(name)}</button>`).join('')}</nav>`;
 }
 function categoryLayer(title, content) {
   closeMobileSheet();
@@ -373,7 +373,7 @@ function showCategories(bookId, editName) {
     categoryLayer('Choose category', `<p>${esc(book.title)}</p><div class="category-choices">${names.map(name=>button('mobile-category-choose',`${bookCategory(book)===name?'✓ ':''}${esc(name)}`,'secondary',`data-id="${esc(bookId)}" data-category="${esc(name)}"`)).join('')}</div><p>Create groups from Library → Categories.</p>`);
     return;
   }
-  categoryLayer(editName ? 'Rename category' : 'Catagories', `${!editName ? `<div class="category-rows">${names.map(name=>`<div><b>${esc(name)}</b>${name==='Default'?'<small>Uncategorized manga</small>':`${button('mobile-edit-category','Rename','secondary',`data-name="${esc(name)}"`)}${button('mobile-category-delete','Delete','secondary',`data-name="${esc(name)}"`)}`}</div>`).join('')}</div>`:''}<form id="category-form"><label>${editName?'Category name':'New category'}<input id="category-name" maxlength="60" required value="${esc(editName || '')}" placeholder="e.g. Action, Romance, To read"></label><button class="primary" type="submit">${editName?'Save name':'Create category'}</button></form>`);
+  categoryLayer(editName ? 'Rename category' : 'Categories', `${!editName ? `<div class="category-rows">${names.map(name=>`<div><b>${esc(name)}</b>${name==='Default'?'<small>Uncategorized manga</small>':`${button('mobile-edit-category','Rename','secondary',`data-name="${esc(name)}"`)}${button('mobile-category-delete','Delete','secondary',`data-name="${esc(name)}"`)}`}</div>`).join('')}</div>`:''}<form id="category-form"><label>${editName?'Category name':'New category'}<input id="category-name" maxlength="60" required value="${esc(editName || '')}" placeholder="e.g. Action, Romance, To read"></label><button class="primary" type="submit">${editName?'Save name':'Create category'}</button></form>`);
   document.querySelector('#category-form').addEventListener('submit',async event=>{
     event.preventDefault(); const submit=event.target.querySelector('button');submit.disabled=true;
     try { await changeCategory(editName?'rename':'create',editName || document.querySelector('#category-name').value,editName?document.querySelector('#category-name').value:undefined); }
@@ -419,7 +419,7 @@ function showMobileSheet(kind) {
   layer.id = 'mobile-sheet';
   layer.className = 'modal-backdrop mobile-sheet-backdrop';
   const filters = `<h2>Filter and sort</h2><div class="mobile-filter-options">${['All','Reading','Completed','Favorites','Local'].map(tab => button('mobile-filter',tab, state.tab === tab ? 'primary' : 'secondary',`data-tab="${tab}"`)).join('')}</div><label class="mobile-sort-label">Sort titles<select id="sort">${['Recent','Title A–Z','Unread chapters','Recently read'].map(sort => `<option ${state.sort === sort ? 'selected' : ''}>${sort}</option>`).join('')}</select></label>`;
-  const menu = `<h2>Library options</h2>${button('mobile-manage-categories','Catagories')}${button('import','Import files')}${button('nav','Downloads','secondary','data-page="Downloads"')}${button('refresh-library','Update library')}${button('nav','Settings','secondary','data-page="Settings"')}`;
+  const menu = `<h2>Library options</h2>${button('import','Import files')}${button('nav','Downloads','secondary','data-page="Downloads"')}${button('refresh-library','Update library')}${button('nav','Settings','secondary','data-page="Settings"')}`;
   layer.innerHTML = `<section class="modal mobile-sheet" role="dialog" aria-modal="true" aria-label="${kind === 'filters' ? 'Filter and sort' : 'Library options'}"><span class="sheet-handle"></span>${kind === 'filters' ? filters : menu}${button('mobile-close-sheet','Close','secondary')}</section>`;
   layer.addEventListener('click',event => {
     if (event.target === layer) closeMobileSheet();

@@ -53,6 +53,7 @@ const book = {
 let sourceResolvers = [];
 const invoke = async (name, args) => {
   calls.push({ name, args });
+  if (name === "download_queue") return [];
   if (name === "extension_list") return [];
   if (name === "apk_state") return { repositories: [], installed: [] };
   if (name === "cloud_status")

@@ -19,6 +19,7 @@ const {pathToFileURL}=require('node:url');
     const snapshot=()=>structuredClone({books,settings,progress,dataDir:'test'});
     let image;
     window.__TAURI__={core:{invoke:async(name,args)=>{
+     if(name==='download_queue')return [];
      if(name==='snapshot')return snapshot();
      if(name==='cloud_status')return{configured:false,signedIn:false};
      if(name==='verification_plan')return{enabled:false};

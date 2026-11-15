@@ -17,8 +17,10 @@ class MainActivity : TauriActivity() {
   private var readerImmersive = false
   private var readerBack: OnBackPressedCallback? = null
   private var backInFlight = false
+  private var contentWebView: WebView? = null
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
+    contentWebView = webView
     webView.addJavascriptInterface(ReaderChrome(this, webView), "MreaderChrome")
     readerBack = object : OnBackPressedCallback(true) {
       override fun handleOnBackPressed() {
@@ -51,6 +53,16 @@ class MainActivity : TauriActivity() {
     super.onWindowFocusChanged(hasFocus)
     if (hasFocus && readerImmersive) setReaderImmersive(true)
   }
+  override fun onResume() {
+    super.onResume()
+    if (intent?.getBooleanExtra("mreaderDownloads", false) == true) {
+      intent.removeExtra("mreaderDownloads")
+      contentWebView?.post { contentWebView?.evaluateJavascript("if(typeof navigate==='function')navigate('Downloads')",null) }
+    }
+  }
+  override fun onNewIntent(intent: android.content.Intent) {
+    super.onNewIntent(intent); setIntent(intent)
+  }
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge(
       statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
@@ -69,6 +81,15 @@ class MainActivity : TauriActivity() {
 }
 
 class ReaderChrome(private val activity: MainActivity, private val webView: WebView) {
+  @JavascriptInterface
+  fun requestDownloadNotifications() {
+    activity.runOnUiThread {
+      if (Uri.parse(webView.url ?: "").host == "tauri.localhost" && android.os.Build.VERSION.SDK_INT >= 33 &&
+        androidx.core.content.ContextCompat.checkSelfPermission(activity, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        androidx.core.app.ActivityCompat.requestPermissions(activity,arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),410)
+      }
+    }
+  }
   @JavascriptInterface
   fun setImmersive(enabled: Boolean) {
     activity.runOnUiThread {

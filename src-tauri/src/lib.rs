@@ -1,4 +1,6 @@
 mod mobile_download;
+mod downloads;
+mod migration;
 mod categories;
 mod apk;
 mod cloud;
@@ -28,6 +30,8 @@ struct Core {
     data: PathBuf,
     manifests: Mutex<HashMap<String, sources::Manifest>>,
     downloads: Mutex<HashSet<String>>,
+    queue: downloads::Queue,
+    migration_preview: Mutex<Option<migration::Backup>>,
     cloud: cloud::Cloud,
     verification: Option<PathBuf>,
 }
@@ -41,6 +45,7 @@ impl Core {
         sources.extensions.set_dir(&profile.join("extensions"))?;
         let store=store::Store::open(&profile.join("library.sqlite"))?;
         source_sync::migrate(&store,&sources.apk.state()?)?;
+        let queue=downloads::Queue::default();queue.load(&store)?;
         Ok(Self {
             mobile_download: mobile_download::Service::default(),
             store,
@@ -51,6 +56,8 @@ impl Core {
             data,
             manifests: Mutex::new(HashMap::new()),
             downloads: Mutex::new(HashSet::new()),
+            queue,
+            migration_preview: Mutex::new(None),
         })
     }
     fn settings(&self) -> Result<Settings> {
@@ -649,11 +656,15 @@ async fn download(
         .await
         .map_err(|e| e.to_string())?;
     let temp = downloads.join(format!("{}.partial", uuid::Uuid::new_v4()));
+    struct PartialCleanup(PathBuf);
+    impl Drop for PartialCleanup {fn drop(&mut self){let _=std::fs::remove_dir_all(&self.0);}}
+    let _cleanup=PartialCleanup(temp.clone());
     tokio::fs::create_dir(&temp)
         .await
         .map_err(|e| e.to_string())?;
     let total = manifest.urls.len();
     if let Some(app) = app {
+        downloads::page_progress(app,core,chapter_id,0,total);
         let _ = app.emit(
             "download-progress",
             DownloadEvent {
@@ -699,6 +710,7 @@ async fn download(
         }
         done += 1;
         if let Some(app) = app {
+            downloads::page_progress(app,core,chapter_id,done,total);
             let _ = app.emit(
                 "download-progress",
                 DownloadEvent {
@@ -951,11 +963,13 @@ fn mobile_download_stop(core: State<Arc<Core>>) -> Result<()> {
     {let _=core;Ok(())}
 }
 fn switch_profile(core: &Core) -> Result<()> {
-    if !core.downloads.lock().map_err(|e| e.to_string())?.is_empty() {
+    if core.queue.busy() || !core.downloads.lock().map_err(|e| e.to_string())?.is_empty() {
         return Err("Wait for downloads to finish before switching accounts".into());
     }
     let dir = core.cloud.profile_dir(&core.data)?;
     core.store.switch(&dir.join("library.sqlite"))?;
+    core.queue.load(&core.store)?;
+    *core.migration_preview.lock().map_err(|e|e.to_string())?=None;
     core.sources.extensions.set_dir(&dir.join("extensions"))?;
     core.local.clear_indexes()?;
     core.manifests.lock().map_err(|e| e.to_string())?.clear();
@@ -969,7 +983,7 @@ async fn cloud_auth(
     register: bool,
 ) -> Result<serde_json::Value> {
     let _guard = core.cloud.gate.lock().await;
-    if !core.downloads.lock().map_err(|e| e.to_string())?.is_empty() {
+    if core.queue.busy() || !core.downloads.lock().map_err(|e| e.to_string())?.is_empty() {
         return Err("Wait for downloads to finish before switching accounts".into());
     }
     let signed_in = core
@@ -986,7 +1000,7 @@ async fn cloud_auth(
 #[tauri::command]
 async fn cloud_logout(core: State<'_, Arc<Core>>) -> Result<Snapshot> {
     let _guard = core.cloud.gate.lock().await;
-    if !core.downloads.lock().map_err(|e| e.to_string())?.is_empty() {
+    if core.queue.busy() || !core.downloads.lock().map_err(|e| e.to_string())?.is_empty() {
         return Err("Wait for downloads to finish before signing out".into());
     }
     core.cloud.logout(&core.cloud.client).await?;
@@ -1077,6 +1091,8 @@ pub fn run() {
             };
             let core = Core::new(data).map_err(std::io::Error::other)?;
             app.manage(Arc::new(core));
+            #[cfg(target_os="android")]
+            let _=downloads::APP.set(app.handle().clone());
             #[cfg(not(target_os = "android"))]
             if let Some(window) = app.get_webview_window("main") {
                 if std::env::var("MREADER_DISPLAY").as_deref() == Ok("2") {
@@ -1118,6 +1134,11 @@ pub fn run() {
             save_progress,
             save_settings,
             download_chapter,
+            downloads::download_enqueue,
+            downloads::download_queue,
+            downloads::download_stop,
+            migration_preview,
+            migration_import,
             export_backup,
             restore_backup,
             extension_list,
@@ -1142,12 +1163,32 @@ pub fn run() {
         .build(context)
         .expect("Mreader failed to start")
         .run(|app, event| {
+            #[cfg(not(target_os="android"))]
+            if let tauri::RunEvent::WindowEvent {label,event:tauri::WindowEvent::CloseRequested{api,..},..}=&event {
+                if app.state::<Arc<Core>>().queue.busy(){api.prevent_close();if let Some(w)=app.get_webview_window(label){let _=w.minimize();}}
+            }
             if matches!(event, tauri::RunEvent::Exit) {
                 if let Some(core) = app.try_state::<Arc<Core>>() {
                     core.sources.apk.stop();
                 }
             }
         });
+}
+
+#[tauri::command]
+fn migration_preview(core:State<Arc<Core>>,request:tauri::ipc::Request<'_>)->Result<migration::Preview>{
+    let bytes=match request.body(){tauri::ipc::InvokeBody::Raw(bytes)=>bytes,_=>return Err("Choose a Mihon .tachibk or .proto.gz file".into())};
+    let backup=migration::decode(bytes)?;let preview=migration::preview(&backup,&core.store,&core.sources.apk.state()?)?;
+    *core.migration_preview.lock().map_err(|e|e.to_string())?=Some(backup);Ok(preview)
+}
+#[tauri::command]
+async fn migration_import(core:State<'_,Arc<Core>>,confirmed:bool)->Result<serde_json::Value>{
+    if !confirmed{return Err("Review and confirm the migration first".into())}
+    let _guard=core.cloud.gate.lock().await;
+    let mut pending=core.migration_preview.lock().map_err(|e|e.to_string())?;
+    let backup=pending.as_ref().ok_or("Choose and preview a backup first")?;
+    let count=migration::import(backup,&core.store)?;*pending=None;
+    Ok(serde_json::json!({"imported":count,"snapshot":core.snapshot()?}))
 }
 
 #[cfg(test)]

@@ -39,3 +39,5 @@
 -keepclassmembers class app.mreader.desktop.ReaderChrome {
     @android.webkit.JavascriptInterface <methods>;
 }
+-keep class app.mreader.desktop.DownloadService { *; }
+-keep class app.mreader.desktop.DownloadService$Companion { *; }

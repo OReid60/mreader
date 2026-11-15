@@ -257,7 +257,7 @@ function arrangeDesktopHeader() {
   const tabs=document.querySelector('.main>.tabs-row'),tools=document.querySelector('.main>.tools'),right=tools?.querySelector('.toolbar-right');
   if(tabs&&right){tabs.append(right);tools.remove();}
   const heading=document.querySelector('.main>.heading'),categories=document.querySelector('.main>.category-tabs');
-  if(heading&&categories){heading.classList.add('library-heading');heading.append(categories);}
+  if(heading){heading.classList.add('compact-heading');if(categories){heading.classList.add('library-heading');heading.append(categories);}}
 }
 async function navigate(page, remember = true) {
   if(remember && state.page!==page){navigationHistory.push({page:state.page,tab:state.tab,query:state.query,mobileSearch:state.mobileSearch});if(navigationHistory.length>20)navigationHistory.shift();}
@@ -444,20 +444,8 @@ async function refreshLibrary() {
     state.busy = false;
   }
 }
-async function downloadChapter(id, chapter) {
-  if (state.downloads.has(chapter)) return;
-  state.downloads.set(chapter, { done: 0, total: 0 });
-  renderDetails();
-  try {
-    const b = await api("download_chapter", { bookId: id, chapterId: chapter });
-    state.books = state.books.map((x) => (x.id === id ? b : x));
-    if (state.detail?.id === id) state.detail = b;
-    if(!downloadWorker)toast("Chapter saved for offline reading");
-  } finally {
-    state.downloads.delete(chapter);
-    render();
-    if (state.detail) renderDetails();
-  }
+async function downloadChapter(id,chapter) {
+  await downloadAllChapters(id,false,[chapter]);
 }
 function loadCovers() {
   for (const el of document.querySelectorAll("[data-cover]")) {
@@ -796,7 +784,7 @@ function handleAppBack() {
 }
 function settingsContentView() {
   const s = state.settings;
-  return `<div class="heading"><div><div class="eyebrow">MAKE YOURSELF AT HOME</div><h1>Settings</h1><p class="sub">A reading space that feels like yours.</p></div></div>${typeof accountView === "function" ? accountView() : ""}${typeof extensionView === "function" ? extensionView() : ""}<form id="settings-form"><div class="settings-row"><div><h3>Startup page</h3><p>Choose the page Mreader opens on this device.</p></div><select name="startPage" aria-label="Startup page">${["Library","Updates","History","Browse","Downloads"].map(page=>`<option ${page===(s.startPage || "Library")?"selected":""}>${page}</option>`).join("")}</select></div><div class="settings-row"><div><h3>Appearance</h3><p>Your preferred library theme.</p></div><select name="theme"><option value="dark" ${s.theme === "dark" ? "selected" : ""}>Dark</option><option value="light" ${s.theme === "light" ? "selected" : ""}>Light</option></select></div><div class="settings-row"><div><h3>Chapter language</h3><p>Applies to MangaDex searches and chapter refreshes.</p></div><select name="language">${Object.entries(
+  return `<div class="heading"><div><div class="eyebrow">MAKE YOURSELF AT HOME</div><h1>Settings</h1><p class="sub">A reading space that feels like yours.</p></div></div>${typeof accountView === "function" ? accountView() : ""}${typeof extensionView === "function" ? extensionView() : ""}<form id="settings-form"><div class="settings-row"><div><h3>Categories</h3><p>Group your manga by type or reading list.</p></div>${button("mobile-manage-categories","Categories","secondary",'type="button"')}</div><div class="settings-row"><div><h3>Startup page</h3><p>Choose the page Mreader opens on this device.</p></div><select name="startPage" aria-label="Startup page">${["Library","Updates","History","Browse","Downloads"].map(page=>`<option ${page===(s.startPage || "Library")?"selected":""}>${page}</option>`).join("")}</select></div><div class="settings-row"><div><h3>Appearance</h3><p>Your preferred library theme.</p></div><select name="theme"><option value="dark" ${s.theme === "dark" ? "selected" : ""}>Dark</option><option value="light" ${s.theme === "light" ? "selected" : ""}>Light</option></select></div><div class="settings-row"><div><h3>Chapter language</h3><p>Applies to MangaDex searches and chapter refreshes.</p></div><select name="language">${Object.entries(
     {
       en: "English",
       es: "Spanish",
@@ -1079,6 +1067,7 @@ async function boot() {
       typeof loadFeatures === "function"
         ? await loadFeatures()
         : { enabled: false };
+    await loadDownloadQueue();
     applySnapshot(await api("snapshot"));
     state.page = ["Library","Updates","History","Browse","Downloads"].includes(state.settings.startPage) ? state.settings.startPage : "Library";
     if(typeof ensureUserSource === "function"){if(userSources().length>1)state.source='all';ensureUserSource();}
