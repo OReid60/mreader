@@ -28,7 +28,7 @@ function settingsView() {
 }
 function mobileInstallView() {
   const code=featureState.mobileDownload;
-  return `<section class="feature-panel mobile-install"><div class="feature-heading"><div><h2>Mreader for Android</h2><p>Install on your phone or tablet and sign in with your Mreader account.</p></div><span class="connection-pill">Signed ARM64 APK · 0.3.9</span></div><div class="mobile-install-body"><div class="mobile-download-code">${code?code.svg:'<div class="qr-placeholder" aria-hidden="true">'+icon('downloads')+'</div><p>Your download code appears here.</p>'}</div><div class="mobile-install-instructions"><h3>Scan to download</h3><ol><li>Generate a QR code and scan it with your phone camera.</li><li>Open the HTTPS download page, then tap Download Android APK.</li><li>Install over your existing Mreader app to keep your data.</li></ol><p class="feature-note">Your phone only needs an internet connection. No GitHub sign-in, same Wi-Fi, or running desktop server is required. The link stays valid while the download page is published.</p>${featureState.mobileDownloadError?`<p class="notice" role="alert">${esc(featureState.mobileDownloadError)}</p>`:''}${code?`<label>Download page<input id="mobile-download-link" aria-label="Android APK download link" readonly value="${esc(code.url)}"></label><div class="button-row">${button('android-download-copy','Copy link','secondary')}${button('android-download-start','Refresh code','secondary')}</div>`:button('android-download-start',featureState.mobileDownloadBusy?'Generating…':'Generate download code','primary',featureState.mobileDownloadBusy?'disabled':'')}</div></div></section>`;
+  return `<section class="feature-panel mobile-install"><div class="feature-heading"><div><h2>Mreader for Android</h2><p>Install on your phone or tablet and sign in with your Mreader account.</p></div><span class="connection-pill">Signed Android APK</span></div><div class="mobile-install-body"><div class="mobile-download-code">${code?code.svg:'<div class="qr-placeholder" aria-hidden="true">'+icon('downloads')+'</div><p>Your download code appears here.</p>'}</div><div class="mobile-install-instructions"><h3>Scan to download</h3><ol><li>Generate a QR code and scan it with your phone camera.</li><li>Open the HTTPS download page, then tap Download Android APK.</li><li>Install over your existing Mreader app to keep your data.</li></ol><p class="feature-note">Your phone only needs an internet connection. No GitHub sign-in, same Wi-Fi, or running desktop server is required. The link stays valid while the download page is published.</p>${featureState.mobileDownloadError?`<p class="notice" role="alert">${esc(featureState.mobileDownloadError)}</p>`:''}${code?`<label>Download page<input id="mobile-download-link" aria-label="Android APK download link" readonly value="${esc(code.url)}"></label><div class="button-row">${button('android-download-copy','Copy link','secondary')}${button('android-download-start','Refresh code','secondary')}</div>`:button('android-download-start',featureState.mobileDownloadBusy?'Generating…':'Generate download code','primary',featureState.mobileDownloadBusy?'disabled':'')}</div></div></section>`;
 }
 async function startMobileDownload() {
   if(featureState.mobileDownloadBusy)return;
@@ -43,6 +43,7 @@ document.addEventListener('click',async event=>{
 });
 
 function sourceLabel(id) {
+  if(id==='all')return 'All installed sources';
   if (!id) return "No source selected";
   if (id.startsWith("apk:")) return featureState.apk.installed.flatMap(e => e.extension.sources).find(s => "apk:"+s.id===id)?.name || "APK extension";
   if (id.startsWith("ext:"))
@@ -62,21 +63,146 @@ function extensionOptions() {
     )
     .join("");
 }
+
+// A device-local queue keeps source load bounded and skips completed downloads.
+const downloadJobs = new Map();
+let downloadWorker = false;
+function downloadQueueView() {
+  if(!downloadJobs.size)return '';
+  return `<section class="download-queue" aria-label="Download progress"><h2>Downloads on this device</h2><p class="sub">Keep Mreader open until downloads finish. Chapter files stay on this device.</p>${[...downloadJobs.values()].map(j=>{
+    const active=state.downloads.get(j.active),page=active?.total?`${active.done}/${active.total} pages`:j.active?'Preparing chapter…':'';
+    const pct=j.total?Math.round((j.done+(active?.total?active.done/active.total:0))/j.total*100):100;
+    return `<div class="download-job"><div><b>${esc(j.title)}</b><small>${j.done}/${j.total} chapters · ${j.cancelled?'Stopped after current chapter':j.pending.length||j.active?'Downloading':j.failed.length?'Finished with errors':'Ready offline'}${page?' · '+page:''}${j.failed.length?' · '+j.failed.length+' failed':''}</small></div><progress max="100" value="${pct}" aria-label="${esc(j.title)} download progress"></progress>${j.pending.length?button('download-cancel','Stop queue','secondary',`data-id="${esc(j.id)}"`):''}${j.failed.length&&!j.active?button('download-all','Retry missing','secondary',`data-id="${esc(j.id)}"`):''}${j.failed.length?`<small class="notice">${esc(j.failed[0].error)}</small>`:''}</div>`;
+  }).join('')}</section>`;
+}
+function updateDownloadProgress() {
+  const old=document.querySelectorAll('.download-queue');
+  if(old.length)for(const el of old)el.outerHTML=downloadQueueView();
+  else if(state.page==='Downloads')document.querySelector('.mobile-main,.main')?.insertAdjacentHTML('afterbegin',downloadQueueView());
+  for(const el of document.querySelectorAll('[data-download-chapter]')) {
+    const d=state.downloads.get(el.dataset.downloadChapter);
+    if(d)el.textContent=d.total?`${d.done}/${d.total} pages`:'Preparing…';
+  }
+}
+async function downloadAllChapters(id,unreadOnly=false) {
+  let b=state.books.find(b=>b.id===id);if(!b||b.source==='local')return;
+  const existing=downloadJobs.get(id);if(existing?.active||existing?.pending.length)return;
+  if(!b.chapters.length){b=await api('chapters',{bookId:id,refresh:false});state.books=state.books.map(x=>x.id===id?b:x);}
+  const pending=b.chapters.filter(c=>!c.downloaded&&(!unreadOnly||!progressFor(id,c.id)?.completed)).map(c=>c.id);
+  if(!pending.length){toast('These chapters are already available offline');return;}
+  downloadJobs.set(id,{id,title:b.title,pending,total:pending.length,done:0,failed:[],active:null,cancelled:false});
+  updateDownloadProgress();if(state.detail)renderDetails();
+  toast(`${pending.length} chapters queued. Progress is shown in Downloads.`);
+  if(downloadWorker)return;
+  downloadWorker=true;
+  try{
+    while(true){
+      const job=[...downloadJobs.values()].find(j=>j.pending.length);if(!job)break;
+      job.active=job.pending.shift();updateDownloadProgress();
+      try{await downloadChapter(job.id,job.active);job.done++;}
+      catch(e){job.failed.push({id:job.active,error:readerErrorMessage(e)});}
+      finally{job.active=null;updateDownloadProgress();}
+    }
+  }finally{downloadWorker=false;render();if(state.detail)renderDetails();}
+}
+document.addEventListener('click',event=>{
+  const t=event.target.closest('[data-action]');if(!t)return;
+  if(t.dataset.action==='download-all'||t.dataset.action==='download-unread')downloadAllChapters(t.dataset.id,t.dataset.action==='download-unread').catch(toast);
+  if(t.dataset.action==='download-cancel'){const job=downloadJobs.get(t.dataset.id);if(job){job.pending=[];job.cancelled=true;updateDownloadProgress();}}
+});
+function inferEarlierRead(bookId,chapterId) {
+  const b=state.books.find(b=>b.id===bookId);if(!b)return;
+  const chapter=b.chapters.find(c=>c.id===chapterId),number=chapter?.number?.trim();
+  if(!number||!Number.isFinite(Number(number)))return;
+  for(const c of b.chapters){
+    if(!c.number.trim()||!Number.isFinite(Number(c.number))||Number(c.number)>=Number(number))continue;
+    const old=progressFor(bookId,c.id);if(old?.completed)continue;
+    state.progress=state.progress.filter(p=>!(p.bookId===bookId&&p.chapterId===c.id));
+    state.progress.push({...old,bookId,chapterId:c.id,page:old?.page??Math.max(0,c.pages-1),completed:true,updated:Date.now()-1});
+  }
+  indexProgress();
+  b.tags=b.tags.filter(t=>!t.startsWith('mreader:update:')||!(t.slice(15)===chapterId||progressFor(bookId,t.slice(15))?.completed));
+}
+
+const browseCache=new Map(), browseVariants=new Map(), sourcePreviews=new Map();
+let browseOffsets=new Map(),browseMore=new Set();
+const titleKey=b=>b.title.normalize('NFKC').trim().toLocaleLowerCase().replace(/\s+/g,' ');
+function mergeBrowseBooks(books) {
+  const grouped=new Map();browseVariants.clear();
+  for(const book of books){const key=titleKey(book);const list=grouped.get(key)||[];if(!list.some(b=>b.id===book.id))list.push(book);grouped.set(key,list);}
+  return [...grouped.values()].map(list=>{const primary=list.reduce((a,b)=>b.chapters.length>a.chapters.length?b:a);for(const b of list)browseVariants.set(b.id,list);return primary;});
+}
+async function cachedSourceSearch(source,query,offset,force=false) {
+  const key=JSON.stringify([source,query,offset,state.settings.language]);const cached=browseCache.get(key);
+  if(!force&&cached&&Date.now()-cached.at<300000)return cached.result;
+  const result=await api('search_source',{source,query,offset});
+  browseCache.set(key,{at:Date.now(),result});if(browseCache.size>40)browseCache.delete(browseCache.keys().next().value);
+  return result;
+}
+async function searchAllSources(more,version,force=false) {
+  const sources=userSources().filter(s=>!s.language||s.language==='all'||s.language===state.settings.language);
+  if(!more){browseOffsets=new Map();browseMore=new Set(sources.map(s=>s.id));state.catalog=[];}
+  const pending=sources.filter(s=>browseMore.has(s.id)),errors=[];
+  let cursor=0,books=more?state.catalog.flatMap(b=>browseVariants.get(b.id)||[b]):[];
+  const current=()=>version===searchVersion&&state.page==='Browse';
+  await Promise.all(Array.from({length:Math.min(3,pending.length)},async()=>{
+    while(cursor<pending.length){const source=pending[cursor++];
+      try{
+        const offset=browseOffsets.get(source.id)??(source.id.startsWith('apk:')?1:0);
+        const r=await cachedSourceSearch(source.id,state.query,offset,force);if(!current())return;
+        books.push(...r.books);browseOffsets.set(source.id,offset+(source.id.startsWith('apk:')?1:r.books.length));
+        if(!r.books.length||r.total<=(source.id.startsWith('apk:')?r.books.length:offset+r.books.length))browseMore.delete(source.id);
+        state.catalog=mergeBrowseBooks(books);state.total=state.catalog.length+(browseMore.size?1:0);render();
+      }catch(e){if(!current())return;errors.push(source.name+': '+String(e));browseMore.delete(source.id);}
+    }
+  }));
+  if(current()&&errors.length)state.error=errors.join(' · ');
+}
+async function compareBrowseSources(id) {
+  const variants=browseVariants.get(id);if(!variants||variants.length<2)return null;
+  const results=[];let cursor=0;
+  await Promise.all(Array.from({length:Math.min(3,variants.length)},async()=>{
+    while(cursor<variants.length){const b=variants[cursor++];const cached=sourcePreviews.get(b.id);
+      try{const value=cached&&Date.now()-cached.at<300000?cached.book:await api('preview_source_book',{book:b});sourcePreviews.set(b.id,{at:Date.now(),book:value});results.push(value);}
+      catch{results.push({...b,previewFailed:true});}
+    }
+  }));
+  const ranked=results.sort((a,b)=>Number(!!a.previewFailed)-Number(!!b.previewFailed)||b.chapters.length-a.chapters.length);
+  for(const b of ranked)browseVariants.set(b.id,ranked);
+  const primary=ranked[0];state.catalog=state.catalog.map(b=>b.id===id?primary:b);return primary;
+}
+function sourceAlternatives(book) {
+  const variants=browseVariants.get(book.id);if(!variants||variants.length<2)return '';
+  return `<div class="source-alternatives"><b>Available sources</b>${variants.map((b,i)=>button('source-variant',`${esc(sourceLabel(b.source))} · ${b.previewFailed?'Unavailable':b.chapters.length+' chapters'}${i===0?' · Primary':''}`,book.id===b.id?'primary':'secondary',`data-id="${esc(b.id)}"`)).join('')}</div>`;
+}
+document.addEventListener('click',event=>{
+  const t=event.target.closest('[data-action="source-variant"]');if(!t)return;
+  const b=[...browseVariants.values()].flat().find(b=>b.id===t.dataset.id);if(!b)return;
+  if(!state.catalog.some(x=>x.id===b.id))state.catalog.push(b);
+  state.detail=state.books.find(x=>x.id===b.id)||b;state.detailLoading=false;renderDetails();
+});
+function extensionIcon(extension) {
+  let url='';try{const u=new URL(extension.iconUrl);if(u.protocol==='https:'&&!u.username&&!u.password)url=u.href;}catch{}
+  return `<span class="extension-icon">${icon('book')}${url?`<img src="${esc(url)}" alt="${esc(extension.name)} icon" loading="lazy" decoding="async" referrerpolicy="no-referrer">`:''}</span>`;
+}
+document.addEventListener('error',event=>{if(event.target.matches?.('.extension-icon img'))event.target.remove();},true);
 function userSources() {
   return [...(state.settings.komgaUrl ? [{id:'komga',name:'Komga · personal server'}] : []),
-    ...featureState.apk.installed.flatMap(e=>e.extension.sources.map(s=>({id:'apk:'+s.id,name:s.name+' · '+s.language+' (APK)'}))),
-    ...featureState.extensions.map(e=>({id:'ext:'+e.id,name:e.name+' · '+e.language}))];
+    ...featureState.apk.installed.flatMap(e=>e.extension.sources.map(s=>({id:'apk:'+s.id,language:s.language,name:s.name+' · '+s.language+' (APK)'}))),
+    ...featureState.extensions.map(e=>({id:'ext:'+e.id,language:e.language,name:e.name+' · '+e.language}))];
 }
 function ensureUserSource() {
   const sources=userSources();
+  if(state.source==='all' && sources.length)return;
   if(!sources.some(s=>s.id===state.source)) {
     const pending=featureState.syncedSources.some(e=>e.kind==='apk' && state.source.startsWith('apk:'));
-    if(!pending)state.source=sources[0]?.id || '';
+    if(!pending)state.source=sources.length>1?'all':sources[0]?.id || '';
   }
 }
 function sourceOptions() {
   ensureUserSource();
   const sources=userSources();
+  if(sources.length>1)sources.unshift({id:'all',name:'All installed sources'});
   const pending=state.source && !sources.some(s=>s.id===state.source);
   return (pending?`<option value="${esc(state.source)}" selected disabled>Synced source · waiting to prepare</option>`:sources.length?'':'<option value="" selected>Add sources in Settings</option>') + sources.map(s=>`<option value="${esc(s.id)}" ${s.id===state.source?'selected':''}>${esc(s.name)}</option>`).join('');
 }
@@ -94,7 +220,7 @@ function apkView() {
   const installed=p=>a.installed.find(e=>e.extension.package===p);
   const layout=state.settings.apkLayout || "list";
   filtered.sort((a,b)=>Number(!!installed(b.extension.package))-Number(!!installed(a.extension.package)) || a.extension.name.localeCompare(b.extension.name));
-  return `<section class="feature-panel apk-panel"><div class="feature-heading"><div><h2>APK source extensions</h2><p>Add a repository you choose, then install its extensions on this device. Your library and progress use the same source IDs on desktop and Android.</p></div></div><p class="feature-note">Extensions run third-party code. Install only from repositories you trust. Android runs APKs directly; desktop downloads a local compatibility runtime on first install (about 344 MB). No account hosting is required for extensions.</p><details open><summary>Add extension repository</summary><form id="apk-repository-form" class="account-form"><input name="url" type="url" required placeholder="HTTPS repository or index.pb URL" aria-label="Extension repository URL"><input name="fingerprint" pattern="[a-fA-F0-9]{64}" placeholder="Trusted signing fingerprint (64 hex characters)" aria-label="Repository signing fingerprint"><button class="secondary" ${featureState.apkBusy?"disabled":""}>Add repository</button></form></details>${featureState.apkBusy?'<p role="status"><span class="spinner"></span> Preparing extension… First desktop install downloads the runtime.</p>':""}${featureState.apkError?`<p class="notice" role="alert">${esc(featureState.apkError)}</p>`:""}${entries.length?`<label class="apk-search-label">Find an extension<input id="apk-search" type="search" value="${esc(featureState.apkQuery)}" placeholder="Source name or language (default: English)"></label><div class="apk-display-controls" role="group" aria-label="Extension layout">${button("apk-layout","List",layout==="list"?"primary":"secondary",'data-layout="list" aria-pressed="'+(layout==="list")+'"')}${button("apk-layout","Stacked",layout==="stacked"?"primary":"secondary",'data-layout="stacked" aria-pressed="'+(layout==="stacked")+'"')}</div><p class="sub">${filtered.length} matching packages · ${a.installed.length} installed on this device</p><div class="apk-extension-results apk-layout-${layout}">${filtered.slice(0,60).map(({extension:e,repository})=>{const old=installed(e.package),up=old&&old.extension.versionCode<e.versionCode;return `<div class="extension-row"><div><b>${esc(e.name)}</b><small>${esc(e.version)} · API ${esc(e.api)} · ${[...new Set(e.sources.map(s=>s.language))].map(esc).join(", ")}${e.contentWarning>=2?" · Mature content":""}</small><small>${esc(e.package)}</small></div><div class="button-row">${!old||up?button("apk-install",up?"Update":"Install","secondary",`data-package="${esc(e.package)}" data-repository="${esc(repository)}" ${featureState.apkBusy?"disabled":""}`):'<span class="connection-pill">Installed</span>'}${old?button("apk-remove",featureState.cloud.signedIn?"Remove everywhere":"Uninstall","secondary",`data-package="${esc(e.package)}" ${featureState.apkBusy?"disabled":""}`):""}</div></div>`}).join("")}</div>${filtered.length>60?'<p class="sub">Showing 60 results. Search to narrow the list.</p>':""}`:'<p class="sub">Add a repository to browse installable sources.</p>'}<p class="feature-note">Installed source choices sync with your account; each device prepares its own copy. Uninstalling preserves your library and progress. A source may require its own website account or verification; installing an extension does not grant access.</p></section>`;
+  return `<section class="feature-panel apk-panel"><div class="feature-heading"><div><h2>APK source extensions</h2><p>Add a repository you choose, then install its extensions on this device. Your library and progress use the same source IDs on desktop and Android.</p></div></div><p class="feature-note">Extensions run third-party code. Install only from repositories you trust. Android runs APKs directly; desktop downloads a local compatibility runtime on first install (about 344 MB). No account hosting is required for extensions.</p><details open><summary>Add extension repository</summary><form id="apk-repository-form" class="account-form"><input name="url" type="url" required placeholder="HTTPS repository or index.pb URL" aria-label="Extension repository URL"><input name="fingerprint" pattern="[a-fA-F0-9]{64}" placeholder="Trusted signing fingerprint (64 hex characters)" aria-label="Repository signing fingerprint"><button class="secondary" ${featureState.apkBusy?"disabled":""}>Add repository</button></form></details>${featureState.apkBusy?'<p role="status"><span class="spinner"></span> Preparing extension… First desktop install downloads the runtime.</p>':""}${featureState.apkError?`<p class="notice" role="alert">${esc(featureState.apkError)}</p>`:""}${entries.length?`<label class="apk-search-label">Find an extension<input id="apk-search" type="search" value="${esc(featureState.apkQuery)}" placeholder="Source name or language (default: English)"></label><div class="apk-display-controls" role="group" aria-label="Extension layout">${button("apk-layout","List",layout==="list"?"primary":"secondary",'data-layout="list" aria-pressed="'+(layout==="list")+'"')}${button("apk-layout","Stacked",layout==="stacked"?"primary":"secondary",'data-layout="stacked" aria-pressed="'+(layout==="stacked")+'"')}</div><p class="sub">${filtered.length} matching packages · ${a.installed.length} installed on this device</p><div class="apk-extension-results apk-layout-${layout}">${filtered.slice(0,60).map(({extension:e,repository})=>{const old=installed(e.package),up=old&&old.extension.versionCode<e.versionCode;return `<div class="extension-row"><div class="extension-identity">${extensionIcon(e)}<div><b>${esc(e.name)}</b><small>${esc(e.version)} · API ${esc(e.api)} · ${[...new Set(e.sources.map(s=>s.language))].map(esc).join(", ")}${e.contentWarning>=2?" · Mature content":""}</small><small>${esc(e.package)}</small></div></div><div class="button-row">${!old||up?button("apk-install",up?"Update":"Install","secondary",`data-package="${esc(e.package)}" data-repository="${esc(repository)}" ${featureState.apkBusy?"disabled":""}`):'<span class="connection-pill">Installed</span>'}${old?button("apk-remove",featureState.cloud.signedIn?"Remove everywhere":"Uninstall","secondary",`data-package="${esc(e.package)}" ${featureState.apkBusy?"disabled":""}`):""}</div></div>`}).join("")}</div>${filtered.length>60?'<p class="sub">Showing 60 results. Search to narrow the list.</p>':""}`:'<p class="sub">Add a repository to browse installable sources.</p>'}<p class="feature-note">Installed source choices sync with your account; each device prepares its own copy. Uninstalling preserves your library and progress. A source may require its own website account or verification; installing an extension does not grant access.</p></section>`;
 }
 async function apkAction(command,args) {
   if(featureState.apkBusy)return;

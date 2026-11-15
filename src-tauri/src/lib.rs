@@ -104,6 +104,16 @@ async fn search_source(
         .await
 }
 #[tauri::command]
+async fn preview_source_book(core: State<'_, Arc<Core>>, mut book: Book) -> Result<Book> {
+    if !book.source.starts_with("apk:") && !book.source.starts_with("ext:") && book.source != "komga" {
+        return Err("Choose an installed source".into());
+    }
+    book.path.clear();
+    book.chapters = core.sources.chapters(&book, &core.settings()?).await?;
+    for chapter in &mut book.chapters { chapter.path.clear(); chapter.downloaded = false; }
+    Ok(book)
+}
+#[tauri::command]
 fn add_book(core: State<Arc<Core>>, mut book: Book) -> Result<Snapshot> {
     if let Some(id) = book.source.strip_prefix("ext:") {
         core.sources.extensions.get(id)?;
@@ -190,6 +200,13 @@ async fn chapters(core: State<'_, Arc<Core>>, book_id: String, refresh: bool) ->
                 chapter.path = old.path.clone();
                 chapter.downloaded = true;
                 chapter.pages = old.pages;
+            }
+        }
+        if refresh && !b.chapters.is_empty() {
+            for chapter in &chapters {
+                if !b.chapters.iter().any(|old| old.id == chapter.id) {
+                    b.tags.push(format!("mreader:update:{}", chapter.id));
+                }
             }
         }
         b.chapters = chapters;
@@ -538,13 +555,20 @@ fn save_progress(
             core.store.put(&b)?;
         }
     }
-    core.store.save_progress(&Progress {
-        book_id,
-        chapter_id,
+    core.store.save_reading_progress(&b, &Progress {
+        book_id: book_id.clone(),
+        chapter_id: chapter_id.clone(),
         page,
         completed,
         updated: now_ms(),
-    })
+    })?;
+    let mut b = core.store.book(&book_id)?;
+    let old_len = b.tags.len();
+    let progress = core.store.progress()?;
+    b.tags.retain(|tag| !tag.strip_prefix("mreader:update:").is_some_and(|id|
+        id == chapter_id || progress.iter().any(|p| p.book_id == book_id && p.chapter_id == id && p.completed)));
+    if old_len != b.tags.len() { core.store.put(&b)?; }
+    Ok(())
 }
 #[tauri::command]
 fn save_settings(core: State<Arc<Core>>, mut settings: Settings) -> Result<Snapshot> {
@@ -1078,6 +1102,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             snapshot,
             search_source,
+            preview_source_book,
             add_book,
             remove_book,
             favorite,

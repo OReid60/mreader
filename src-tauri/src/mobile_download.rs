@@ -14,8 +14,6 @@ mod desktop {
         pub url: &'static str,
         pub svg: String,
         pub hosted: bool,
-        pub version: &'static str,
-        pub bytes: usize,
     }
     fn qr(text: &str) -> Result<String> {
         let code = QrCode::encode_text(text, QrCodeEcc::Medium).map_err(|e| e.to_string())?;
@@ -36,8 +34,6 @@ mod desktop {
                 url: DOWNLOAD_URL,
                 svg: qr(DOWNLOAD_URL)?,
                 hosted: true,
-                version: "0.3.9",
-                bytes: 15_779_968,
             })
         }
         pub fn stop(&self) -> Result<()> {

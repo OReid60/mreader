@@ -180,6 +180,28 @@ impl Store {
         self.0.lock().map_err(|e|e.to_string())?.execute("INSERT INTO progress VALUES(?1,?2,?3,?4,?5) ON CONFLICT(book,chapter) DO UPDATE SET page=excluded.page,completed=MAX(progress.completed,excluded.completed),updated=excluded.updated",params![p.book_id,p.chapter_id,p.page,p.completed,p.updated]).map_err(|e|e.to_string())?;
         Ok(())
     }
+    pub fn save_reading_progress(&self, book: &Book, p: &Progress) -> Result<()> {
+        let current = book.chapters.iter().find(|c| c.id == p.chapter_id)
+            .and_then(|c| c.number.trim().parse::<f64>().ok()).filter(|n| n.is_finite());
+        let mut db = self.0.lock().map_err(|e| e.to_string())?;
+        let tx = db.transaction().map_err(|e| e.to_string())?;
+        if let Some(current) = current {
+            let completed: std::collections::HashSet<String> = {
+                let mut statement = tx.prepare("SELECT chapter FROM progress WHERE book=?1 AND completed=1").map_err(|e|e.to_string())?;
+                let rows = statement.query_map([&book.id],|r|r.get(0)).map_err(|e|e.to_string())?;
+                rows.collect::<std::result::Result<_,_>>().map_err(|e|e.to_string())?
+            };
+            for c in &book.chapters {
+                if !completed.contains(&c.id) && c.number.trim().parse::<f64>().ok().is_some_and(|n| n.is_finite() && n < current) {
+                    tx.execute("INSERT INTO progress VALUES(?1,?2,?3,1,?4) ON CONFLICT(book,chapter) DO UPDATE SET completed=1,updated=excluded.updated WHERE progress.completed=0",
+                        params![book.id,c.id,c.pages.saturating_sub(1),p.updated-1]).map_err(|e|e.to_string())?;
+                }
+            }
+        }
+        tx.execute("INSERT INTO progress VALUES(?1,?2,?3,?4,?5) ON CONFLICT(book,chapter) DO UPDATE SET page=excluded.page,completed=MAX(progress.completed,excluded.completed),updated=excluded.updated",
+            params![p.book_id,p.chapter_id,p.page,p.completed,p.updated]).map_err(|e|e.to_string())?;
+        tx.commit().map_err(|e|e.to_string())
+    }
     pub fn settings(&self) -> Result<Settings> {
         let db = self.0.lock().map_err(|e| e.to_string())?;
         let mut q = db
@@ -308,6 +330,28 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn jumping_forward_marks_only_earlier_numbered_chapters_and_allows_rereading() {
+        let s = Store::open(Path::new(":memory:")).unwrap();
+        let mut chapters: Vec<Chapter> = (1..=20).rev().map(|n| Chapter {
+            id: n.to_string(), number: n.to_string(), title: String::new(), pages: 8,
+            path: String::new(), downloaded: false, group: String::new(),
+        }).collect();
+        chapters.push(Chapter { id:"extra".into(), number:"Extra".into(), title:String::new(), pages:8, path:String::new(),downloaded:false,group:String::new() });
+        let book: Book = serde_json::from_value(serde_json::json!({"id":"b","title":"Test","source":"local","chapters":chapters})).unwrap();
+        let mut p = Progress { book_id:"b".into(),chapter_id:"11".into(),page:0,completed:false,updated:1000 };
+        s.save_reading_progress(&book,&p).unwrap();
+        let rows=s.progress().unwrap();
+        assert_eq!(rows.len(),11);
+        assert!(rows.iter().filter(|r|r.chapter_id!="11").all(|r|r.completed));
+        assert!(!rows.iter().find(|r|r.chapter_id=="11").unwrap().completed);
+        assert_eq!(rows[0].chapter_id,"11");
+        p.chapter_id="3".into();p.page=2;p.updated=2000;
+        s.save_reading_progress(&book,&p).unwrap();
+        let reread=s.progress().unwrap().into_iter().find(|r|r.chapter_id=="3").unwrap();
+        assert_eq!(reread.page,2);assert!(reread.completed);
+        assert_eq!(s.progress().unwrap().len(),11);
+    }
     #[test]
     fn progress_upserts_and_settings_roundtrip() {
         let s = Store::open(Path::new(":memory:")).unwrap();
