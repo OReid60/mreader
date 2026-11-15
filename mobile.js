@@ -40,7 +40,7 @@ function mountReaderStrip(reader, root) {
     const bounds = element.getBoundingClientRect(), view = root.getBoundingClientRect();
     return bounds.bottom > view.top - margin && bounds.top < view.bottom + margin;
   };
-  function report(error) { if (active()) status.textContent = String(error); }
+  function report(error) { if (active()) status.textContent = readerErrorMessage(error); }
   function enqueue(work, priority = false) {
     return new Promise((resolve, reject) => {
       jobs[priority ? 'unshift' : 'push']({work, resolve, reject});

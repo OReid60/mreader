@@ -28,24 +28,20 @@ function settingsView() {
 }
 function mobileInstallView() {
   const code=featureState.mobileDownload;
-  const active=code && code.expiresAt>Date.now();
-  return `<section class="feature-panel mobile-install"><div class="feature-heading"><div><h2>Mreader for Android</h2><p>Install on an Android phone or tablet, then sign in with the same Mreader account.</p></div><span class="connection-pill">Signed ARM64 APK · 0.3.9</span></div><div class="mobile-install-body"><div class="mobile-download-code">${active?code.svg:'<div class="qr-placeholder" aria-hidden="true">'+icon('downloads')+'</div><p>Your download code appears here.</p>'}</div><div class="mobile-install-instructions"><h3>Scan to download</h3><ol><li>Connect your phone and this computer to the same Wi-Fi or local network.</li><li>Generate a code, then scan it with your phone camera.</li><li>On the download page, tap Download APK. Install it over your existing app to keep your data.</li></ol><p class="feature-note">The installer is shared directly by this computer. No GitHub login is needed. Sharing expires after ten minutes or when Mreader closes. If Windows asks, allow Mreader on private networks.</p>${featureState.mobileDownloadError?`<p class="notice" role="alert">${esc(featureState.mobileDownloadError)}</p>`:''}${active?`<label>Computer address<select id="mobile-download-address" aria-label="Computer address">${code.addresses.map(address=>`<option ${address===code.address?'selected':''}>${esc(address)}</option>`).join('')}</select></label><label>Download link<input id="mobile-download-link" aria-label="Android APK download link" readonly value="${esc(code.url)}"></label><p role="status">Sharing until ${new Date(code.expiresAt).toLocaleTimeString()}</p><div class="button-row">${button('android-download-copy','Copy link','secondary')}${button('android-download-start','Refresh code','secondary')}${button('android-download-stop','Stop sharing','secondary')}</div>`:`${code?'<p role="status">This download code has expired.</p>':''}${button('android-download-start',featureState.mobileDownloadBusy?'Generating…':'Generate download code','primary',featureState.mobileDownloadBusy?'disabled':'')}`}</div></div></section>`;
+  return `<section class="feature-panel mobile-install"><div class="feature-heading"><div><h2>Mreader for Android</h2><p>Install on your phone or tablet and sign in with your Mreader account.</p></div><span class="connection-pill">Signed ARM64 APK · 0.3.9</span></div><div class="mobile-install-body"><div class="mobile-download-code">${code?code.svg:'<div class="qr-placeholder" aria-hidden="true">'+icon('downloads')+'</div><p>Your download code appears here.</p>'}</div><div class="mobile-install-instructions"><h3>Scan to download</h3><ol><li>Generate a QR code and scan it with your phone camera.</li><li>Open the HTTPS download page, then tap Download Android APK.</li><li>Install over your existing Mreader app to keep your data.</li></ol><p class="feature-note">Your phone only needs an internet connection. No GitHub sign-in, same Wi-Fi, or running desktop server is required. The link stays valid while the download page is published.</p>${featureState.mobileDownloadError?`<p class="notice" role="alert">${esc(featureState.mobileDownloadError)}</p>`:''}${code?`<label>Download page<input id="mobile-download-link" aria-label="Android APK download link" readonly value="${esc(code.url)}"></label><div class="button-row">${button('android-download-copy','Copy link','secondary')}${button('android-download-start','Refresh code','secondary')}</div>`:button('android-download-start',featureState.mobileDownloadBusy?'Generating…':'Generate download code','primary',featureState.mobileDownloadBusy?'disabled':'')}</div></div></section>`;
 }
-async function startMobileDownload(address=null) {
+async function startMobileDownload() {
   if(featureState.mobileDownloadBusy)return;
   featureState.mobileDownloadBusy=true;featureState.mobileDownloadError='';render();
-  try{
-    featureState.mobileDownload=await api('mobile_download_start',{address});
-    clearTimeout(featureState.mobileDownloadTimer);
-    featureState.mobileDownloadTimer=setTimeout(()=>{if(state.page==='Settings')render();},Math.max(0,featureState.mobileDownload.expiresAt-Date.now()+100));
-  }catch(error){featureState.mobileDownloadError=String(error);}
+  try{featureState.mobileDownload=await api('mobile_download_start',{address:null});}
+  catch(error){featureState.mobileDownloadError=String(error);}
   finally{featureState.mobileDownloadBusy=false;render();}
 }
-document.addEventListener('change',event=>{if(event.target.id==='mobile-download-address')startMobileDownload(event.target.value);});
 document.addEventListener('click',async event=>{
   if(event.target.closest('[data-action]')?.dataset.action!=='android-download-copy')return;
   try{await navigator.clipboard.writeText(featureState.mobileDownload.url);toast('Download link copied');}catch{document.querySelector('#mobile-download-link')?.select();toast('Select and copy the download link');}
 });
+
 function sourceLabel(id) {
   if (!id) return "No source selected";
   if (id.startsWith("apk:")) return featureState.apk.installed.flatMap(e => e.extension.sources).find(s => "apk:"+s.id===id)?.name || "APK extension";

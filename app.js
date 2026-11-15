@@ -513,6 +513,12 @@ async function resume(id) {
       : b.chapters[0];
   await openReader(id, c.id, p?.chapterId === c.id ? p.page : 0);
 }
+function readerErrorMessage(error) {
+  const message=String(error);
+  if(/UnknownHostException|EAI_NODATA|EAI_AGAIN|ENOTFOUND|name or service not known|no such host is known|failed to lookup address|dns error/i.test(message))
+    return "The source address could not be resolved. Check your internet connection and retry. For offline reading, download this chapter on this device while online first.";
+  return message;
+}
 async function openReader(id, chapterId, page = null) {
   if (typeof stopReaderStrip === "function") await stopReaderStrip();
   const returnDetail=state.detail?.id || state.reader?.returnDetail || null;
@@ -558,7 +564,7 @@ async function openReader(id, chapterId, page = null) {
     await displayPage();
   } catch (e) {
     if (state.reader?.version === version) {
-      state.reader.error = String(e);
+      state.reader.error = readerErrorMessage(e);
       state.reader.loading = false;
       renderReader();
     }
@@ -654,7 +660,7 @@ async function displayPage() {
   } catch (e) {
     if (state.reader === r && r.page === page) {
       r.loading = false;
-      r.error = String(e);
+      r.error = readerErrorMessage(e);
       renderReader();
     }
   }

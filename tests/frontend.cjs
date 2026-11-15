@@ -106,6 +106,8 @@ vm.runInContext(fs.readFileSync("features.js", "utf8"), context);
 vm.runInContext(fs.readFileSync("app.js", "utf8"), context);
 (async () => {
   await new Promise(setImmediate);
+  assert(vm.runInContext('readerErrorMessage("UnknownHostException: EAI_NODATA").includes("download this chapter")',context));
+  assert.equal(vm.runInContext('readerErrorMessage("Chapter not found")',context),"Chapter not found");
   assert(elements.get("#app").innerHTML.includes("&lt;script&gt;"));
   assert(!elements.get("#app").innerHTML.includes("<script>alert"));
   await vm.runInContext("openReader('local:test','chapter',0)", context);
