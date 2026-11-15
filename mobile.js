@@ -33,7 +33,8 @@ function mountReaderStrip(reader, root) {
   const chapters = reader.book.chapters;
   const sections = new Map(), cells = new Map(), loaded = new Set();
   const jobs = [];
-  let running = 0, destroyed = false, initializing = true, progressTimer, pendingProgress, scrollFrame;
+  let running = 0, destroyed = false, initializing = true, progressTimer, pendingProgress, scrollFrame, viewAnchor;
+  let viewportWidth=root.clientWidth, viewportHeight=root.clientHeight;
   const active = () => !destroyed && state.reader === reader;
   const near = (element, margin = root.clientHeight) => {
     const bounds = element.getBoundingClientRect(), view = root.getBoundingClientRect();
@@ -107,7 +108,7 @@ function mountReaderStrip(reader, root) {
       retry.className = 'strip-retry';
       retry.textContent = `Page ${cell.page + 1} could not load · Retry`;
       retry.title = String(error);
-      retry.addEventListener('click', () => loadPage(cell, true));
+      retry.addEventListener('click', () => loadPage(cell, true).catch(report));
       cell.frame.append(retry);
       if (priority) throw error;
     }).finally(() => { cell.pending = null; });
@@ -238,6 +239,7 @@ function mountReaderStrip(reader, root) {
   function measure() {
     scrollFrame=null;
     if (!active() || initializing) return;
+    preserveResize();
     trim();
     const toolbar=root.querySelector('.reader-bar').getBoundingClientRect().height;
     const line=root.getBoundingClientRect().top+toolbar+Math.min(80,(root.clientHeight-toolbar)*0.1);
@@ -247,7 +249,15 @@ function mountReaderStrip(reader, root) {
       return distance(a)-distance(b);
     });
     if (visible[0]) record(visible[0]);
+    viewAnchor=anchor();
   }
+  function preserveResize() {
+    if(root.clientWidth===viewportWidth && root.clientHeight===viewportHeight)return;
+    if(!initializing)restoreAnchor(viewAnchor);
+    viewportWidth=root.clientWidth;viewportHeight=root.clientHeight;
+    viewAnchor=anchor();
+  }
+  function onResize(){if(active()){preserveResize();schedule();}}
   function schedule() { if (!scrollFrame && active()) scrollFrame=requestAnimationFrame(measure); }
   async function jump(chapter,page) {
     const section=await expand(chapter,true);
@@ -261,9 +271,10 @@ function mountReaderStrip(reader, root) {
     cell.element.scrollIntoView({block:'start'});
     initializing=false;
     record(cell);
+    viewAnchor=anchor();
     for (const nearby of section.pages.slice(Math.max(0,cell.page-1),cell.page+3)) loadPage(nearby).catch(report);
   }
-  const session={root,ready:null,lastProgress:null,flush,jump,captureView(){const saved=anchor();return()=>restoreAnchor(saved);}, async move(delta) {
+  const session={root,ready:null,lastProgress:null,flush,jump,captureView(){const saved=anchor();return()=>{restoreAnchor(saved);viewAnchor=anchor();};}, async move(delta) {
     let chapter=reader.chapter, page=reader.page+delta;
     if (page<0) {
       chapter=chapters[chapters.indexOf(chapter)-1];
@@ -282,10 +293,12 @@ function mountReaderStrip(reader, root) {
     clearTimeout(progressTimer);
     if(scrollFrame)cancelAnimationFrame(scrollFrame);
     root.removeEventListener('scroll',schedule);
+    window.removeEventListener('resize',onResize);
     for(const cell of loaded){cell.pinned=false;release(cell);}
   }};
   reader.strip=session;
   root.addEventListener('scroll',schedule,{passive:true});
+  window.addEventListener('resize',onResize,{passive:true});
   let pointer;
   stage.addEventListener('pointerdown',event=>{pointer={x:event.clientX,y:event.clientY};},{passive:true});
   stage.addEventListener('click',event=>{
