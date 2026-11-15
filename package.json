@@ -1,6 +1,6 @@
 {
   "name": "mreader",
-  "version": "0.3.4",
+  "version": "0.3.6",
   "private": true,
   "description": "Rust-powered desktop manga reader",
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop.ps1 build",
     "test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop.ps1 test",
     "check": "node --check app.js && node --check features.js && node --check mobile.js && node tests/frontend.cjs",
-    "test:mobile": "node tests/mobile-layout.cjs"
+    "test:mobile": "node tests/mobile-layout.cjs",
+    "test:reader": "node tests/reader-strip.cjs"
   },
   "devDependencies": {
     "playwright": "1.65.1"

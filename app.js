@@ -37,6 +37,7 @@ const nativeInvoke = (name, args = {}) =>
         Error("Open the Rust desktop app to use this feature. Run npm start."),
       );
 async function api(name, args = {}) {
+  if (name === "cloud_sync" && typeof flushStripProgress === "function") await flushStripProgress();
   const result = await nativeInvoke(name, args);
   if (
     [
@@ -62,6 +63,7 @@ const state = {
     language: "en",
     direction: "ltr",
     fit: "width",
+    readerLayout: "paged",
     dataSaver: false,
     komgaUrl: "",
     komgaUser: "",
@@ -478,6 +480,7 @@ async function resume(id) {
   await openReader(id, c.id, p?.chapterId === c.id ? p.page : 0);
 }
 async function openReader(id, chapterId, page = null) {
+  if (typeof stopReaderStrip === "function") await stopReaderStrip();
   closeDetail();
   state.reader?.pdfRender?.cancel();
   state.reader?.pdfDocument?.destroy();
@@ -572,6 +575,12 @@ function detectMime(bytes) {
 async function displayPage() {
   const r = state.reader;
   if (!r) return;
+  if (!r.pdf && state.settings.readerLayout === "continuous" && typeof mountReaderStrip === "function") {
+    r.loading = false;
+    if (r.strip) await r.strip.jump(r.chapter, r.page);
+    else { renderReader(); await r.strip.ready; }
+    return;
+  }
   const page = r.page;
   const completed =
     !!progressFor(r.book.id, r.chapter.id)?.completed ||
@@ -615,6 +624,7 @@ async function displayPage() {
   }
 }
 function renderReader() {
+  if (state.reader?.strip) { applyReaderChrome(); return; }
   document.querySelector("#reader")?.remove();
   const r = state.reader;
   if (!r) return;
@@ -625,7 +635,7 @@ function renderReader() {
   el.className = "reader";
   el.innerHTML = `<div class="reader-bar">${button("close-reader", icon("back"), "icon-button", 'aria-label="Close reader"')}<div class="reader-title">${esc(r.book.title)}<small>Chapter ${esc(r.chapter.number)} · ${esc(r.chapter.title || r.chapter.group)}</small></div><div class="reader-controls"><select id="reader-fit" aria-label="Page fit">${[
     ["width", "Fit width"],
-    ["height", "Fit height"],
+    ["height", "Fit page"],
     ["original", "Original size"],
   ]
     .map(
@@ -636,8 +646,18 @@ function renderReader() {
       "",
     )}</select><select id="reader-direction" aria-label="Reading direction"><option value="ltr" ${state.settings.direction === "ltr" ? "selected" : ""}>Left to right</option><option value="rtl" ${state.settings.direction === "rtl" ? "selected" : ""}>Right to left</option></select>${button("fullscreen", "⛶", "icon-button", 'aria-label="Toggle fullscreen"')}</div></div><div class="reading-stage ${esc(state.settings.fit)}">${r.error ? `<div class="empty error-box">${esc(r.error)}${button("retry-page", "Retry", "primary")}</div>` : r.loading ? '<div class="reader-loading"><span class="spinner"></span> Loading page…</div>' : r.pdfDocument ? '<canvas class="reading-page"></canvas>' : r.pdf ? `<iframe class="pdf-document" title="PDF reader" src="${esc(r.url)}"></iframe>` : `<img class="reading-page" src="${esc(r.url)}" alt="Page ${r.page + 1}" decoding="async" data-action="page-click">`}</div><div class="reading-bottom">${button("previous-chapter", "Previous chapter")}${button("previous-page", icon("back"), "icon-button", `aria-label="Previous page" ${r.page === 0 ? "disabled" : ""}`)}<label class="page-jump">${r.pdf ? "PDF document" : `<input id="page-jump" type="number" min="1" max="${r.total}" value="${r.page + 1}" aria-label="Jump to page"> / ${r.total}`}</label>${button("next-page", icon("arrow"), "icon-button", `aria-label="Next page" ${r.page >= r.total - 1 ? "disabled" : ""}`)}${button("next-chapter", "Next chapter", "primary")}${r.pdf ? button("mark-read", "Mark read") : ""}</div>`;
   document.body.append(el);
+  const layout = document.createElement("select");
+  layout.id = "reader-layout";
+  layout.setAttribute("aria-label", "Reader layout");
+  layout.innerHTML = `<option value="paged">Single page</option><option value="continuous" ${r.pdf ? "disabled" : ""}>Continuous strip</option>`;
+  layout.value = r.pdf ? "paged" : (state.settings.readerLayout || "paged");
+  el.querySelector(".reader-controls").prepend(layout);
   el.querySelector(".reading-stage").dataset.action = "page-click";
   applyReaderChrome();
+  if (!r.loading && !r.pdf && state.settings.readerLayout === "continuous" && typeof mountReaderStrip === "function") {
+    mountReaderStrip(r, el);
+    return;
+  }
   if (r.pdfDocument && !r.loading && !r.error) {
     const canvas = document.createElement("canvas");
     canvas.className = "reading-page";
@@ -653,6 +673,7 @@ function renderReader() {
 async function turnPage(delta) {
   const r = state.reader;
   if (!r || (r.pdf && !r.pdfDocument)) return;
+  if (r.strip) { await r.strip.move(delta); return; }
   const next = r.page + delta;
   if (next < 0 || next >= r.total) return;
   r.page = next;
@@ -665,7 +686,8 @@ async function nextChapter(delta) {
     r.book.chapters[
       r.book.chapters.findIndex((c) => c.id === r.chapter.id) + delta
     ];
-  if (c) await openReader(r.book.id, c.id, 0);
+  if (c && r.strip) await r.strip.jump(c, 0);
+  else if (c) await openReader(r.book.id, c.id, 0);
   else
     toast(
       delta > 0
@@ -675,10 +697,12 @@ async function nextChapter(delta) {
 }
 function applyReaderChrome() {
   const r = state.reader;
+  const restoreView = r?.strip?.captureView();
   const immersive = !!r?.fullscreen && !r.controlsVisible;
   document.body.classList.toggle("reader-open", !!r);
   document.querySelector("#reader")?.classList.toggle("reader-immersive", immersive);
   globalThis.MreaderChrome?.setImmersive(immersive);
+  restoreView?.();
 }
 function setReaderFullscreen(enabled) {
   if (!state.reader) return;
@@ -687,6 +711,7 @@ function setReaderFullscreen(enabled) {
   applyReaderChrome();
 }
 function closeReader() {
+  if (typeof stopReaderStrip === "function") stopReaderStrip();
   readerVersion++;
   state.reader?.pdfRender?.cancel();
   state.reader?.pdfDocument?.destroy();
@@ -889,15 +914,25 @@ document.addEventListener("change", async (e) => {
       state.sort = e.target.value;
       render();
     }
-    if (["reader-fit", "reader-direction"].includes(e.target.id)) {
-      state.settings[e.target.id === "reader-fit" ? "fit" : "direction"] =
+    if (["reader-fit", "reader-direction", "reader-layout"].includes(e.target.id)) {
+      const current = state.reader;
+      const position = current && {book:current.book.id,chapter:current.chapter.id,page:current.page,fullscreen:current.fullscreen,controlsVisible:current.controlsVisible};
+      if (current?.strip) await stopReaderStrip();
+      state.settings[{"reader-fit":"fit", "reader-direction":"direction", "reader-layout":"readerLayout"}[e.target.id]] =
         e.target.value;
       applySnapshot(
         await api("save_settings", {
           settings: { ...state.settings, komgaPassword: "" },
         }),
       );
-      renderReader();
+      if (current) {
+        await openReader(position.book, position.chapter, position.page);
+        if (state.reader) {
+          state.reader.fullscreen = position.fullscreen;
+          state.reader.controlsVisible = position.controlsVisible;
+          applyReaderChrome();
+        }
+      }
     }
     if (e.target.id === "page-jump" && state.reader) {
       state.reader.page = Math.max(

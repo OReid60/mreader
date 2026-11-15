@@ -12,6 +12,8 @@ function element() {
       elements.delete("#" + this.id);
     },
     addEventListener() {},
+    setAttribute() {},
+    prepend() {},
     focus() {},
     querySelector() {
       return element();

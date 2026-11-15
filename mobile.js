@@ -3,6 +3,304 @@
 function isAndroid() {
   return /Android/i.test(globalThis.navigator?.userAgent || "");
 }
+
+// Continuous reading keeps chapter/page identity separate from decoded images.
+// Only nearby pages are fetched; old image URLs are released as the reader moves.
+let stripProgressWrites = Promise.resolve();
+async function flushStripProgress() {
+  const strip = state.reader?.strip;
+  if (strip) strip.flush();
+  await stripProgressWrites;
+}
+function stopReaderStrip() {
+  const strip = state.reader?.strip;
+  if (!strip) return stripProgressWrites.catch(() => {});
+  strip.flush();
+  strip.destroy();
+  state.reader.strip = null;
+  return stripProgressWrites.catch(toast);
+}
+function mountReaderStrip(reader, root) {
+  root.style.overflowAnchor = 'none';
+  const stage = root.querySelector('.reading-stage');
+  stage.className = `reading-strip fit-${state.settings.fit}`;
+  stage.removeAttribute('data-action');
+  stage.replaceChildren();
+  const status = document.createElement('p');
+  status.className = 'strip-status';
+  status.setAttribute('role', 'status');
+  stage.append(status);
+  const chapters = reader.book.chapters;
+  const sections = new Map(), cells = new Map(), loaded = new Set();
+  const jobs = [];
+  let running = 0, destroyed = false, initializing = true, progressTimer, pendingProgress, scrollFrame;
+  const active = () => !destroyed && state.reader === reader;
+  const near = (element, margin = root.clientHeight) => {
+    const bounds = element.getBoundingClientRect(), view = root.getBoundingClientRect();
+    return bounds.bottom > view.top - margin && bounds.top < view.bottom + margin;
+  };
+  function report(error) { if (active()) status.textContent = String(error); }
+  function enqueue(work, priority = false) {
+    return new Promise((resolve, reject) => {
+      jobs[priority ? 'unshift' : 'push']({work, resolve, reject});
+      pump();
+    });
+  }
+  function pump() {
+    while (running < 2 && jobs.length) {
+      const task = jobs.shift();
+      running++;
+      Promise.resolve().then(() => active() ? task.work() : undefined)
+        .then(task.resolve, task.reject).finally(() => { running--; pump(); });
+    }
+  }
+  function release(cell) {
+    if (cell.pinned) return;
+    if (!cell.url) return;
+    cell.frame.style.height = `${cell.frame.getBoundingClientRect().height}px`;
+    cell.image.removeAttribute('src');
+    cell.image.hidden = true;
+    cell.frame.dataset.loaded = 'false';
+    URL.revokeObjectURL(cell.url);
+    cell.url = null;
+    loaded.delete(cell);
+  }
+  function trim() {
+    for (const cell of loaded) if (!near(cell.element, root.clientHeight * 1.5)) release(cell);
+    if (loaded.size > 12) {
+      const line = root.getBoundingClientRect().top + root.clientHeight / 2;
+      const farthest = [...loaded].sort((a,b) => Math.abs(b.element.getBoundingClientRect().top-line)-Math.abs(a.element.getBoundingClientRect().top-line));
+      for (const cell of farthest) {
+        if (loaded.size <= 12) break;
+        if (!near(cell.element, 0)) release(cell);
+      }
+    }
+  }
+  function loadPage(cell, priority = false) {
+    if (cell.url) return Promise.resolve();
+    if (cell.pending) return cell.pending.then(() => priority && !cell.url && active() ? loadPage(cell,true) : undefined);
+    cell.frame.querySelector('button')?.remove();
+    cell.pending = enqueue(async () => {
+      if (!priority && !near(cell.element, root.clientHeight)) return;
+      const bytes = await api('page_data', {bookId:reader.book.id, chapterId:cell.chapter.id, page:cell.page});
+      if (!active()) return;
+      if (!priority && !near(cell.element, root.clientHeight)) return;
+      const url = URL.createObjectURL(new Blob([bytes], {type:detectMime(bytes)}));
+      cell.url = url;
+      loaded.add(cell);
+      cell.image.hidden = false;
+      cell.image.src = url;
+      try {
+        await cell.image.decode();
+        if (!active() || cell.url !== url) return;
+        const saved = initializing ? null : anchor();
+        cell.frame.style.aspectRatio = `${cell.image.naturalWidth} / ${cell.image.naturalHeight}`;
+        cell.frame.style.height = '';
+        cell.frame.dataset.loaded = 'true';
+        restoreAnchor(saved);
+        trim();
+        schedule();
+      } catch (error) { if (cell.url !== url) return; release(cell); throw error; }
+    }, priority).catch(error => {
+      if (!active()) return;
+      const retry = document.createElement('button');
+      retry.className = 'strip-retry';
+      retry.textContent = `Page ${cell.page + 1} could not load · Retry`;
+      retry.title = String(error);
+      retry.addEventListener('click', () => loadPage(cell, true));
+      cell.frame.append(retry);
+      if (priority) throw error;
+    }).finally(() => { cell.pending = null; });
+    return cell.pending;
+  }
+  const pageObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      const cell = cells.get(entry.target);
+      if (!cell) continue;
+      if (entry.isIntersecting) loadPage(cell).catch(report);
+      else release(cell);
+    }
+  }, {root, rootMargin:'800px 0px'});
+  function anchor() {
+    const top = root.getBoundingClientRect().top + root.querySelector('.reader-bar').getBoundingClientRect().height;
+    const visible = element => {const b=element.getBoundingClientRect();return b.bottom>top && b.top<top+root.clientHeight;};
+    const current=sections.get(reader.chapter.id)?.pages?.[reader.page]?.element;
+    const element = current && visible(current) ? current : [...cells.keys()].find(visible) || [...sections.values()].map(s=>s.element).find(visible);
+    return element ? {element, top:element.getBoundingClientRect().top} : null;
+  }
+  function restoreAnchor(saved) {
+    if (saved?.element.isConnected) root.scrollTop += saved.element.getBoundingClientRect().top - saved.top;
+  }
+  async function expand(chapter, force = false) {
+    const section = sections.get(chapter.id);
+    if (section.pages) return section;
+    if (section.pending) return section.pending;
+    section.pending = enqueue(async () => {
+      if (!force && !near(section.element, root.clientHeight)) return section;
+      const meta = chapter.id === reader.chapter.id && initializing
+        ? {pages:reader.total, pdf:reader.pdf}
+        : await api('open_chapter', {bookId:reader.book.id, chapterId:chapter.id});
+      if (!active()) return section;
+      if (meta.pdf) throw Error('PDF chapters use the single-page reader. Select Single page to open this chapter.');
+      if (!meta.pages) throw Error('This chapter has no readable pages.');
+      chapter.pages = meta.pages;
+      const saved = initializing ? null : anchor();
+      section.element.replaceChildren();
+      const heading = document.createElement('h2');
+      heading.className = 'strip-chapter-heading';
+      heading.textContent = `Chapter ${chapter.number} · ${chapter.title || reader.book.title}`;
+      section.element.append(heading);
+      section.pages = [];
+      for (let page=0; page<meta.pages; page++) {
+        const element = document.createElement('article');
+        element.className = 'strip-page';
+        element.dataset.chapter = chapter.id;
+        element.dataset.page = page;
+        const frame = document.createElement('div');
+        frame.className = 'strip-frame';
+        frame.dataset.label = `Page ${page+1}`;
+        const image = document.createElement('img');
+        image.className = 'strip-image';
+        image.alt = `Chapter ${chapter.number}, page ${page+1}`;
+        image.decoding = 'async';
+        image.hidden = true;
+        frame.append(image);
+        const divider = document.createElement('div');
+        divider.className = 'strip-divider';
+        const next = chapters[chapters.indexOf(chapter)+1];
+        const current = document.createElement('span'), following = document.createElement('span');
+        current.textContent = `Chapter ${chapter.number} · Page ${page+1} / ${meta.pages}`;
+        following.textContent = page+1<meta.pages ? `Next: page ${page+2}` : next ? `Next: chapter ${next.number}` : 'End of available chapters';
+        divider.append(current, following);
+        element.append(frame, divider);
+        section.element.append(element);
+        const cell = {element, frame, image, chapter, page, total:meta.pages, url:null, pending:null};
+        section.pages.push(cell);
+        cells.set(element,cell);
+        pageObserver.observe(element);
+      }
+      restoreAnchor(saved);
+      return section;
+    }, force).catch(error => {
+      if (active()) {
+        const retry = section.element.querySelector('button');
+        if (retry) { retry.disabled=false; retry.textContent=`Chapter ${chapter.number} · Retry loading`; retry.title=String(error); }
+        report(error);
+      }
+      throw error;
+    }).finally(() => { section.pending=null; });
+    return section.pending;
+  }
+  const chapterObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) if (entry.isIntersecting) expand(sections.get(entry.target.dataset.chapter).chapter).catch(() => {});
+  }, {root, rootMargin:'800px 0px'});
+  for (const chapter of chapters) {
+    const element=document.createElement('section');
+    element.className='strip-chapter';
+    element.dataset.chapter=chapter.id;
+    const button=document.createElement('button');
+    button.className='strip-chapter-load';
+    button.textContent=`Chapter ${chapter.number} · ${chapter.title || 'Load chapter'}`;
+    button.addEventListener('click', () => expand(chapter,true).then(()=>schedule()).catch(report));
+    element.append(button);
+    stage.append(element);
+    sections.set(chapter.id, {element, chapter, pages:null, pending:null});
+  }
+  function updateChrome() {
+    root.querySelector('.reader-title small').textContent=`Chapter ${reader.chapter.number} · ${reader.chapter.title || reader.chapter.group || ''}`;
+    root.querySelector('.page-jump').innerHTML=`<input id="page-jump" type="number" min="1" max="${reader.total}" value="${reader.page+1}" aria-label="Jump to page"> / ${reader.total}`;
+    root.querySelector('[data-action="previous-page"]').disabled=reader.page===0 && reader.chapter===chapters[0];
+    root.querySelector('[data-action="next-page"]').disabled=reader.page===reader.total-1 && reader.chapter===chapters[chapters.length-1];
+  }
+  function record(cell) {
+    reader.chapter=cell.chapter;
+    reader.page=cell.page;
+    reader.total=cell.total;
+    updateChrome();
+    const key=`${cell.chapter.id}:${cell.page}`;
+    if (reader.strip.lastProgress===key) return;
+    reader.strip.lastProgress=key;
+    pendingProgress={bookId:reader.book.id, chapterId:cell.chapter.id, page:cell.page, completed:!!progressFor(reader.book.id,cell.chapter.id)?.completed || cell.page===cell.total-1};
+    clearTimeout(progressTimer);
+    progressTimer=setTimeout(flush,350);
+  }
+  function flush() {
+    clearTimeout(progressTimer);
+    const progress=pendingProgress;
+    pendingProgress=null;
+    if (!progress) return;
+    state.progress=state.progress.filter(p=>!(p.bookId===progress.bookId && p.chapterId===progress.chapterId));
+    state.progress.unshift({...progress,updated:Date.now()});
+    indexProgress();
+    stripProgressWrites=stripProgressWrites.catch(()=>{}).then(()=>api('save_progress',progress));
+    stripProgressWrites.catch(error => { if (!pendingProgress) pendingProgress=progress; report(error); });
+  }
+  function measure() {
+    scrollFrame=null;
+    if (!active() || initializing) return;
+    trim();
+    const toolbar=root.querySelector('.reader-bar').getBoundingClientRect().height;
+    const line=root.getBoundingClientRect().top+toolbar+Math.min(80,(root.clientHeight-toolbar)*0.1);
+    const visible=[...loaded].filter(cell=>near(cell.element,0));
+    visible.sort((a,b)=>{
+      const distance=cell=>{const rect=cell.element.getBoundingClientRect();return line<rect.top?rect.top-line:line>rect.bottom?line-rect.bottom:0;};
+      return distance(a)-distance(b);
+    });
+    if (visible[0]) record(visible[0]);
+  }
+  function schedule() { if (!scrollFrame && active()) scrollFrame=requestAnimationFrame(measure); }
+  async function jump(chapter,page) {
+    const section=await expand(chapter,true);
+    if (!active() || !section.pages) return;
+    const cell=section.pages[Math.max(0,Math.min(section.pages.length-1,page))];
+    cell.pinned=true;
+    try { await loadPage(cell,true); }
+    finally { cell.pinned=false; }
+    if (!active()) return;
+    if (!cell.url) throw Error(`Page ${cell.page+1} could not load. Tap Retry on the page.`);
+    cell.element.scrollIntoView({block:'start'});
+    initializing=false;
+    record(cell);
+    for (const nearby of section.pages.slice(Math.max(0,cell.page-1),cell.page+3)) loadPage(nearby).catch(report);
+  }
+  const session={root,ready:null,lastProgress:null,flush,jump,captureView(){const saved=anchor();return()=>restoreAnchor(saved);}, async move(delta) {
+    let chapter=reader.chapter, page=reader.page+delta;
+    if (page<0) {
+      chapter=chapters[chapters.indexOf(chapter)-1];
+      if (!chapter) return;
+      const section=await expand(chapter,true);
+      page=section.pages.length-1;
+    } else if (page>=reader.total) {
+      chapter=chapters[chapters.indexOf(chapter)+1];
+      if (!chapter) return;
+      page=0;
+    }
+    await jump(chapter,page);
+  },destroy() {
+    destroyed=true;
+    pageObserver.disconnect();chapterObserver.disconnect();
+    clearTimeout(progressTimer);
+    if(scrollFrame)cancelAnimationFrame(scrollFrame);
+    root.removeEventListener('scroll',schedule);
+    for(const cell of loaded){cell.pinned=false;release(cell);}
+  }};
+  reader.strip=session;
+  root.addEventListener('scroll',schedule,{passive:true});
+  let pointer;
+  stage.addEventListener('pointerdown',event=>{pointer={x:event.clientX,y:event.clientY};},{passive:true});
+  stage.addEventListener('click',event=>{
+    if (event.target.closest('button,input,select,a') || pointer && Math.hypot(event.clientX-pointer.x,event.clientY-pointer.y)>12) return;
+    const rect=root.getBoundingClientRect(), x=(event.clientX-rect.left)/rect.width;
+    if (x>=1/3 && x<=2/3) {reader.controlsVisible=!reader.controlsVisible;applyReaderChrome();}
+    else session.move((x<1/3?-1:1)*(state.settings.direction==='rtl'?-1:1)).catch(report);
+  });
+  session.ready=jump(reader.chapter,reader.page).then(()=>{
+    if(active())for(const section of sections.values())chapterObserver.observe(section.element);
+  }).catch(error=>{
+    initializing=false;report(error);
+    if(active())for(const section of sections.values())chapterObserver.observe(section.element);
+  });
+}
 function usesCanvasPdf() {
   return /Android|Linux/i.test(globalThis.navigator?.userAgent || "");
 }

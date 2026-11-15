@@ -59,6 +59,8 @@ pub struct Settings {
     pub language: String,
     pub direction: String,
     pub fit: String,
+    #[serde(default = "default_reader_layout")]
+    pub reader_layout: String,
     pub data_saver: bool,
     pub komga_url: String,
     pub komga_user: String,
@@ -72,11 +74,31 @@ impl Default for Settings {
             language: "en".into(),
             direction: "ltr".into(),
             fit: "width".into(),
+            reader_layout: default_reader_layout(),
             data_saver: false,
             komga_url: String::new(),
             komga_user: String::new(),
             komga_password: String::new(),
         }
+    }
+}
+fn default_reader_layout() -> String {
+    "paged".into()
+}
+
+#[cfg(test)]
+mod reader_layout_tests {
+    use super::*;
+    #[test]
+    fn old_settings_default_to_paged_and_new_layout_roundtrips() {
+        let mut legacy = serde_json::to_value(Settings::default()).unwrap();
+        legacy.as_object_mut().unwrap().remove("readerLayout");
+        let old: Settings = serde_json::from_value(legacy).unwrap();
+        assert_eq!(old.reader_layout, "paged");
+        let mut settings = old;
+        settings.reader_layout = "continuous".into();
+        let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert_eq!(restored.reader_layout, "continuous");
     }
 }
 

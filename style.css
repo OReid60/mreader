@@ -599,6 +599,8 @@ select {
   overflow: auto;
 }
 body.reader-open .mobile-bottom { display: none; }
+.reader .reading-stage, .reader .reading-stage.height { align-items: center; }
+.reader .reader-controls { flex-wrap: wrap; gap: 8px; }
 .reader.reader-immersive .reader-bar,
 .reader.reader-immersive .reading-bottom { display: none; }
 .reader.reader-immersive .reading-stage {
@@ -611,6 +613,24 @@ body.reader-open .mobile-bottom { display: none; }
   align-items: center;
 }
 .reader.reader-immersive .reading-stage.width .reading-page { width: 100%; }
+.reader.reader-immersive .reading-stage { align-items: center; }
+.reading-strip { width: 100%; max-width: 1200px; margin: 0 auto; background: #090909; }
+.strip-status:empty { display: none; }
+.strip-status { color: #f2b7a8; padding: 12px; margin: 0; }
+.strip-chapter-heading { margin: 0; padding: 18px 12px; background: #000; color: #ddd; font: 500 14px/1.5 Arial,sans-serif; text-align: center; }
+.strip-chapter-load { display: block; width: 100%; min-height: 88px; border-radius: 0; background: #080808; color: #ddd; border: 1px solid #262626; }
+.strip-page { margin: 0; }
+.strip-frame { position: relative; width: 100%; aspect-ratio: 2 / 3; background: #111; }
+.strip-frame::before { content: attr(data-label); position: absolute; inset: 45% 0 auto; text-align: center; color: #aaa; font-size: 13px; }
+.strip-frame[data-loaded="true"]::before { display: none; }
+.strip-image { display: block; width: 100%; height: 100%; object-fit: contain; margin: 0 auto; }
+.strip-image[hidden] { display: none; }
+.fit-height .strip-frame { height: calc(100dvh - 36px) !important; aspect-ratio: auto !important; }
+.fit-original .strip-frame { aspect-ratio: auto !important; min-height: 240px; overflow-x: auto; }
+.fit-original .strip-image { width: auto; height: auto; max-width: none; }
+.strip-divider { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 36px; padding: 8px 12px; background: #000; color: #bcbcbc; font: 400 11px/1.4 Arial,sans-serif; }
+.strip-divider span:last-child { text-align: right; }
+.strip-retry { position: absolute; inset: 42% 12px auto; background: #252525; color: #fff; padding: 18px; }
 .reader-bar {
   height: 66px;
   background: #191a1df5;
