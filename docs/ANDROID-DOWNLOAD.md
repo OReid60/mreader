@@ -1,14 +1,15 @@
 # Android installer from desktop Settings
 
 Open **Settings → Mobile app → Generate download code**. Connect the phone
-and computer to the same Wi-Fi/local network, scan the QR code, and download
-the APK. The link works without access to the private GitHub repository.
+and computer to the same Wi-Fi/local network, scan the QR code, and tap
+**Download APK** on the page hosted by the desktop. The link works without access to the private GitHub repository.
 Install over an existing Mreader installation to keep its data.
 
 Sharing starts only after the button is pressed. The Rust worker serves only
 the bundled APK, behind a random link, for ten minutes. **Stop sharing** ends
 new downloads; closing Mreader also ends sharing. If there are several local
 network adapters, choose the computer address reachable by the phone.
+Refreshing an active code keeps its link valid until the original expiry.
 
 The bundled Android installer is the signed ARM64 0.3.9 release. Its SHA-256 is
 checked before desktop builds, and the desktop packages embed the verified

@@ -18,12 +18,16 @@ mod desktop {
     type Result<T> = std::result::Result<T, String>;
     struct Active {
         stop: Arc<AtomicBool>,
+        code: Code,
+        port: u16,
+        path: String,
+        deadline: Instant,
     }
     #[derive(Default)]
     pub struct Service {
         active: Mutex<Option<Active>>,
     }
-    #[derive(Serialize)]
+    #[derive(Clone, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Code {
         pub url: String,
@@ -113,6 +117,16 @@ mod desktop {
             );
             return;
         }
+        let landing = path.strip_suffix("Mreader-android.apk").unwrap_or(path);
+        if parts[1] == landing || parts[1] == landing.trim_end_matches('/') {
+            let page = format!("<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Download Mreader for Android</title><style>body{{margin:0;background:#15151a;color:#f0eef7;font:17px system-ui,sans-serif;padding:32px 20px}}main{{max-width:480px;margin:8vh auto}}h1{{font-size:30px}}p{{line-height:1.6;color:#bcb7ca}}a{{display:block;text-align:center;padding:18px;border-radius:12px;background:#c3b1ef;color:#211735;font-weight:700;text-decoration:none;margin:28px 0}}small{{color:#aaa}}</style><main><h1>Mreader for Android</h1><p>Read on your phone or tablet and sync with your desktop account.</p><a href=\"{path}\" download=\"Mreader-{VERSION}-arm64.apk\">Download APK · {:.1} MB</a><small>Version {VERSION} · ARM64 · Android 8 or later</small><p>This signed installer comes directly from your computer. Install it over an existing Mreader app to keep your data.</p><p>Keep desktop Mreader open until the download finishes. If the link expires, scan a fresh code in Settings → Mobile app.</p></main></html>", body.len() as f64 / 1_000_000.0);
+            let _ = write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'\r\nConnection: close\r\n\r\n",page.len());
+            if !head {
+                let _ = stream.write_all(page.as_bytes());
+            }
+            let _ = stream.flush();
+            return;
+        }
         if parts[1] != path {
             let _ = response(
                 &mut stream,
@@ -146,6 +160,25 @@ mod desktop {
             Ok(())
         }
         pub fn start(&self, requested: Option<String>) -> Result<Code> {
+            let mut active = self.active.lock().map_err(|e| e.to_string())?;
+            if let Some(existing) = active.as_mut() {
+                if !existing.stop.load(Ordering::Relaxed) && Instant::now() < existing.deadline {
+                    let mut code = existing.code.clone();
+                    if let Some(address) =
+                        requested.as_ref().filter(|ip| code.addresses.contains(ip))
+                    {
+                        code.address = address.clone();
+                    }
+                    let landing = existing
+                        .path
+                        .strip_suffix("Mreader-android.apk")
+                        .unwrap_or(&existing.path);
+                    code.url = format!("http://{}:{}{}", code.address, existing.port, landing);
+                    code.svg = qr(&code.url)?;
+                    existing.code = code.clone();
+                    return Ok(code);
+                }
+            }
             let mut addresses = if_addrs::get_if_addrs()
                 .map_err(|e| e.to_string())?
                 .into_iter()
@@ -176,25 +209,26 @@ mod desktop {
             let listener = TcpListener::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
             listener.set_nonblocking(true).map_err(|e| e.to_string())?;
             let path = format!("/{}/Mreader-android.apk", uuid::Uuid::new_v4());
+            let port = listener.local_addr().map_err(|e| e.to_string())?.port();
             let url = format!(
-                "http://{}:{}{}",
+                "http://{}:{}/{}/",
                 address,
-                listener.local_addr().map_err(|e| e.to_string())?.port(),
-                path
+                port,
+                path.trim_start_matches('/')
+                    .trim_end_matches("/Mreader-android.apk")
             );
             let svg = qr(&url)?;
             let stop = Arc::new(AtomicBool::new(false));
             let worker_stop = stop.clone();
-            let mut active = self.active.lock().map_err(|e| e.to_string())?;
             if let Some(previous) = active.take() {
                 previous.stop.store(true, Ordering::Relaxed);
             }
+            let worker_path = path.clone();
             std::thread::Builder::new()
                 .name("mobile-installer".into())
-                .spawn(move || run(listener, path, worker_stop, TTL))
+                .spawn(move || run(listener, worker_path, worker_stop, TTL))
                 .map_err(|e| e.to_string())?;
-            *active = Some(Active { stop });
-            Ok(Code {
+            let code = Code {
                 url,
                 svg,
                 addresses,
@@ -202,7 +236,15 @@ mod desktop {
                 expires_at: crate::model::now_ms() + TTL.as_millis() as i64,
                 version: VERSION,
                 bytes: APK.len(),
-            })
+            };
+            *active = Some(Active {
+                stop,
+                code: code.clone(),
+                port,
+                path,
+                deadline: Instant::now() + TTL,
+            });
+            Ok(code)
         }
     }
     impl Drop for Service {
@@ -254,6 +296,46 @@ mod desktop {
             assert!(request("/wrong/Mreader-android.apk", "GET").starts_with(b"HTTP/1.1 404"));
             assert!(request("/token/Mreader-android.apk", "POST").starts_with(b"HTTP/1.1 405"));
             assert!(!request("/token/Mreader-android.apk", "HEAD").ends_with(b"signed-apk-fixture"));
+        }
+        #[test]
+        fn landing_page_offers_the_bundled_apk() {
+            let response = request("/token/", "GET");
+            let text = String::from_utf8(response).unwrap();
+            assert!(text.starts_with("HTTP/1.1 200 OK"));
+            assert!(text.contains("Content-Type: text/html; charset=utf-8"));
+            assert!(text.contains("href=\"/token/Mreader-android.apk\""));
+            assert!(text.contains("Download APK"));
+        }
+        #[test]
+        fn refreshing_keeps_existing_phone_links_alive() {
+            let service = Service::default();
+            let stop = Arc::new(AtomicBool::new(false));
+            let code = Code {
+                url: "http://127.0.0.1:1234/token/".into(),
+                svg: String::new(),
+                addresses: vec!["127.0.0.1".into(), "192.168.1.2".into()],
+                address: "127.0.0.1".into(),
+                expires_at: crate::model::now_ms() + 600000,
+                version: VERSION,
+                bytes: APK.len(),
+            };
+            *service.active.lock().unwrap() = Some(Active {
+                stop: stop.clone(),
+                code: code.clone(),
+                port: 1234,
+                path: "/token/Mreader-android.apk".into(),
+                deadline: Instant::now() + TTL,
+            });
+            assert_eq!(service.start(None).unwrap().url, code.url);
+            assert_eq!(
+                service.start(Some("192.168.1.2".into())).unwrap().url,
+                "http://192.168.1.2:1234/token/"
+            );
+            assert!(!stop.load(Ordering::Relaxed));
+            assert_eq!(
+                service.start(None).unwrap().url,
+                "http://192.168.1.2:1234/token/"
+            );
         }
         #[test]
         fn sharing_expires_without_ui() {
