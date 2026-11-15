@@ -80,6 +80,11 @@ mod desktop {
         stream.flush()
     }
     fn serve(mut stream: TcpStream, path: &str, body: &[u8]) {
+        // Windows accepted sockets inherit the listener's nonblocking mode.
+        // Browsers may send HTTP after accept; wait for it instead of closing.
+        if stream.set_nonblocking(false).is_err() {
+            return;
+        }
         let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
         let _ = stream.set_write_timeout(Some(Duration::from_secs(30)));
         let start = Instant::now();
@@ -305,6 +310,26 @@ mod desktop {
             assert!(text.contains("Content-Type: text/html; charset=utf-8"));
             assert!(text.contains("href=\"/token/Mreader-android.apk\""));
             assert!(text.contains("Download APK"));
+        }
+        #[test]
+        fn accepted_nonblocking_socket_waits_for_browser_request() {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let worker = std::thread::spawn(move || {
+                let (stream, _) = listener.accept().unwrap();
+                stream.set_nonblocking(true).unwrap();
+                serve(stream, "/token/Mreader-android.apk", b"signed-apk-fixture");
+            });
+            let mut client = TcpStream::connect(address).unwrap();
+            std::thread::sleep(Duration::from_millis(150));
+            client
+                .write_all(b"GET /token/Mreader-android.apk HTTP/1.1\r\nHost: localhost\r\n\r\n")
+                .unwrap();
+            let mut bytes = Vec::new();
+            client.read_to_end(&mut bytes).unwrap();
+            worker.join().unwrap();
+            assert!(bytes.starts_with(b"HTTP/1.1 200 OK"));
+            assert!(bytes.ends_with(b"signed-apk-fixture"));
         }
         #[test]
         fn refreshing_keeps_existing_phone_links_alive() {
