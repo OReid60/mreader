@@ -35,6 +35,8 @@ Never put a Supabase service-role key or account password into frontend code. Pu
 
 ## Check compatibility with evidence
 
+Fullscreen reading crosses two UI layers. CSS controls the page inside the WebView: the reader must sit above the bottom navigation, and hidden toolbars must stop consuming space. Android's status and gesture bars belong to the native window, so CSS cannot hide them. `MainActivity.kt` uses `WindowInsetsControllerCompat` through a small JavaScript bridge to hide those bars and restore them on exit. The bridge accepts calls only while the WebView is on the app's local origin. See [Android's immersive-mode guidance](https://developer.android.com/develop/ui/views/layout/immersive).
+
 An APK can compile successfully and still fail on some devices. Our first native library used 4 KiB ELF alignment. Android also supports devices with 16 KiB memory pages, so `src-tauri/build.rs` adds the NDK linker flags for both maximum and common page sizes. Validate the compiled library with `llvm-readelf` and the final APK with `zipalign -c -P 16 4`. These checks complement, rather than replace, a device test.
 
 Reference: [Android's page-size guidance](https://developer.android.com/guide/practices/page-sizes).

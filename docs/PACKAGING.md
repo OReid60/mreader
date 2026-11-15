@@ -12,6 +12,8 @@ Prerequisites: Rust MSVC, Visual Studio C++ Build Tools, Windows SDK, Node/npm, 
 
 ## Android ARM64 phones and tablets
 
+[Android reader update 0.3.5](https://github.com/OReid60/mreader/releases/tag/v0.3.5-fullscreen-reader) adds immersive reading. Mobile readers open with app navigation, reader toolbars, and Android system bars hidden. Tap the center third to reveal controls; tap the edges to change pages in the selected reading direction. Android Back reveals controls from immersive mode, and closing the reader restores normal navigation. Install over the existing app to retain its account, extensions, and saved positions. Frontend phone/tablet checks and signed-APK checks passed; on-device visual confirmation is still required.
+
 Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps1`.
 
 Prerequisites: Java 21, Android SDK 36, Android NDK, Rust's `aarch64-linux-android` target, and `cargo install cargo-ndk --locked`. Set `JAVA_HOME`, `ANDROID_HOME`, and optionally `NDK_HOME` for other machines. The current script also discovers this workstation's installed tools.
