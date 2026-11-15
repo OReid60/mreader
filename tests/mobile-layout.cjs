@@ -22,6 +22,8 @@ const { pathToFileURL } = require('node:url');
       window.__TAURI__ = {
         core: { invoke: async (name,args) => {
           if (name === 'snapshot') return snapshot();
+          if (name === 'mobile_download_start')return {url:'http://192.168.1.2:1234/token/Mreader.apk',svg:'<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="black"/></svg>',addresses:['192.168.1.2'],address:'192.168.1.2',expiresAt:Date.now()+600000,version:'0.3.9',bytes:15779968};
+          if (name === 'mobile_download_stop')return;
           if (name === 'save_settings') {Object.assign(settings,args.settings);sessionStorage.setItem('fixtureSettings',JSON.stringify(settings));return snapshot();}
           if (name === 'extension_list') return [];
           if (name === 'apk_state') return structuredClone(apk);
@@ -195,6 +197,25 @@ const { pathToFileURL } = require('node:url');
     await desktop.evaluate(()=>navigate('Settings'));
     assert.equal(await desktop.locator('[data-action="apk-keiyoushi"]').count(),0);
     assert.equal(await desktop.locator('[data-action="extension-example"]').count(),0);
+    assert.equal(await desktop.locator('input[name="dataSaver"]').count(),0);
+    await desktop.getByRole('tab',{name:'Account & sync',exact:true}).click();
+    assert.equal(await desktop.locator('#cloud-config-form').count(),0);
+    assert(await desktop.locator('#account-form').isVisible());
+    await desktop.getByRole('tab',{name:'Sources',exact:true}).click();
+    await desktop.getByRole('button',{name:'Stacked',exact:true}).click();
+    await desktop.waitForFunction(()=>state.settings.apkLayout==='stacked');
+    assert.equal(await desktop.locator('.apk-layout-stacked').count(),1);
+    await desktop.getByRole('button',{name:'List',exact:true}).click();
+    await desktop.waitForFunction(()=>state.settings.apkLayout==='list');
+    await desktop.getByRole('tab',{name:'Mobile app',exact:true}).click();
+    await desktop.getByRole('button',{name:'Generate download code',exact:true}).click();
+    await desktop.waitForFunction(()=>!!featureState.mobileDownload);
+    assert.equal(await desktop.locator('.mobile-download-code svg').count(),1);
+    assert.equal(await desktop.getByRole('textbox',{name:'Android APK download link',exact:true}).inputValue(),'http://192.168.1.2:1234/token/Mreader.apk');
+    await desktop.screenshot({path:path.join(output,'desktop-mobile-download.png')});
+    await desktop.getByRole('button',{name:'Stop sharing',exact:true}).click();
+    await desktop.waitForFunction(()=>!featureState.mobileDownload);
+    await desktop.getByRole('tab',{name:'General',exact:true}).click();
     await desktop.getByRole('combobox',{name:'Startup page',exact:true}).selectOption('History');
     await desktop.locator('#settings-form button[type="submit"],#settings-form button').last().click();
     await desktop.waitForFunction(()=>state.settings.startPage==='History');

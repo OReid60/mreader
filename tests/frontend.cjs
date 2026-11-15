@@ -140,7 +140,10 @@ vm.runInContext(fs.readFileSync("app.js", "utf8"), context);
   assert(elements.get("#app").innerHTML.includes("New result"));
   assert(!elements.get("#app").innerHTML.includes("Old result"));
   vm.runInContext(`featureState.extensions=[{id:'org.test',name:'<script>extension</script>',version:'1.0.0',schemaVersion:1,allowedHosts:['api.example.org'],language:'en'}];state.page='Settings';render()`,context);
+  vm.runInContext("featureState.settingsTab='account';render()",context);
   assert(elements.get('#app').innerHTML.includes('Managed account sync has not been configured'));
+  assert(!elements.get('#app').innerHTML.includes('cloud-config-form'));
+  vm.runInContext("featureState.settingsTab='sources';render()",context);
   assert(elements.get('#app').innerHTML.includes('&lt;script&gt;extension&lt;/script&gt;'));
   assert(!elements.get('#app').innerHTML.includes('<script>extension'));
   console.log(

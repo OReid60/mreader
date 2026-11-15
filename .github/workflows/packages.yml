@@ -21,6 +21,10 @@ jobs:
           workspaces: src-tauri
       - run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev libdbus-1-dev libfuse2
       - run: npm run check
+      - name: Prepare verified Android installer for desktop sharing
+        run: bash scripts/prepare-mobile-apk.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
       - name: Prepare frontend assets for native tests
         run: |
           mkdir -p dist

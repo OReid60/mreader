@@ -1,3 +1,4 @@
+mod mobile_download;
 mod categories;
 mod apk;
 mod cloud;
@@ -20,6 +21,7 @@ use std::{
 use tauri::{Emitter, Manager, State};
 type Result<T> = std::result::Result<T, String>;
 struct Core {
+    mobile_download: mobile_download::Service,
     store: store::Store,
     local: local::LocalReader,
     sources: sources::Sources,
@@ -40,6 +42,7 @@ impl Core {
         let store=store::Store::open(&profile.join("library.sqlite"))?;
         source_sync::migrate(&store,&sources.apk.state()?)?;
         Ok(Self {
+            mobile_download: mobile_download::Service::default(),
             store,
             local: local::LocalReader::new(),
             sources,
@@ -545,6 +548,7 @@ fn save_progress(
 }
 #[tauri::command]
 fn save_settings(core: State<Arc<Core>>, mut settings: Settings) -> Result<Snapshot> {
+    if !matches!(settings.apk_layout.as_str(), "list" | "stacked") { return Err("Unsupported extension layout".into()); }
     if !matches!(settings.start_page.as_str(), "Library" | "Updates" | "History" | "Browse" | "Downloads") { return Err("Unsupported startup page".into()); }
     if !matches!(settings.reader_layout.as_str(), "paged" | "continuous") {
         return Err("Unsupported reader layout".into());
@@ -905,9 +909,22 @@ async fn cloud_configure(
     url: String,
     public_key: String,
 ) -> Result<serde_json::Value> {
-    let _guard = core.cloud.gate.lock().await;
-    core.cloud.configure(&url, &public_key)?;
-    core.cloud.status()
+    let _ = (core, url, public_key);
+    Err("Managed service settings are fixed for this build".into())
+}
+#[tauri::command]
+fn mobile_download_start(core: State<Arc<Core>>, address: Option<String>) -> Result<serde_json::Value> {
+    #[cfg(not(target_os="android"))]
+    {serde_json::to_value(core.mobile_download.start(address)?).map_err(|e|e.to_string())}
+    #[cfg(target_os="android")]
+    {let _=(core,address);Err("Installer sharing is available on desktop".into())}
+}
+#[tauri::command]
+fn mobile_download_stop(core: State<Arc<Core>>) -> Result<()> {
+    #[cfg(not(target_os="android"))]
+    {core.mobile_download.stop()}
+    #[cfg(target_os="android")]
+    {let _=core;Ok(())}
 }
 fn switch_profile(core: &Core) -> Result<()> {
     if !core.downloads.lock().map_err(|e| e.to_string())?.is_empty() {
@@ -1089,6 +1106,8 @@ pub fn run() {
             extension_example,
             cloud_status,
             cloud_configure,
+            mobile_download_start,
+            mobile_download_stop,
             cloud_auth,
             cloud_logout,
             cloud_sync,

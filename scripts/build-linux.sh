@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+bash scripts/prepare-mobile-apk.sh
 mkdir -p dist releases/linux
 cp index.html app.js features.js style.css dist/
 if [ -f mobile.js ]; then cp mobile.js dist/; fi

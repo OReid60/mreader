@@ -1,5 +1,9 @@
 // Native extension management and managed account sync. No credentials enter page storage.
 const featureState = {
+  settingsTab: "general",
+  mobileDownload: null,
+  mobileDownloadError: "",
+  mobileDownloadBusy: false,
   extensions: [],
   apk: {repositories: [], installed: []},
   apkQuery: "",
@@ -12,6 +16,36 @@ const featureState = {
   sourceSyncErrors: [],
   plan: null,
 };
+function settingsView() {
+  const content=settingsContentView();
+  if(typeof useMobileLayout==='function' && useMobileLayout())return content;
+  const sections=[['general','General'],['account','Account & sync'],['sources','Sources'],['mobile','Mobile app'],['storage','Files & backup']];
+  const selected=sections.some(([id])=>id===featureState.settingsTab)?featureState.settingsTab:'general';
+  const formStart=content.indexOf('<form id="settings-form">');
+  const formEnd=content.indexOf('</form>',formStart)+7;
+  const panels={general:()=>content.slice(formStart,formEnd),account:accountView,sources:extensionView,mobile:mobileInstallView,storage:()=>content.slice(formEnd)};
+  return `<div class="heading"><div><h1>Settings</h1><p class="sub">Personalize your reader, manage sources, and connect your devices.</p></div></div><div class="settings-workspace"><nav class="settings-navigation" role="tablist" aria-label="Settings sections">${sections.map(([id,label])=>`<button role="tab" id="settings-tab-${id}" aria-controls="settings-panel" aria-selected="${selected===id}" class="${selected===id?'active':''}" data-action="settings-section" data-section="${id}">${label}</button>`).join('')}</nav><section id="settings-panel" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-${selected}">${panels[selected]()}</section></div>`;
+}
+function mobileInstallView() {
+  const code=featureState.mobileDownload;
+  const active=code && code.expiresAt>Date.now();
+  return `<section class="feature-panel mobile-install"><div class="feature-heading"><div><h2>Mreader for Android</h2><p>Install on an Android phone or tablet, then sign in with the same Mreader account.</p></div><span class="connection-pill">Signed ARM64 APK · 0.3.9</span></div><div class="mobile-install-body"><div class="mobile-download-code">${active?code.svg:'<div class="qr-placeholder" aria-hidden="true">'+icon('downloads')+'</div><p>Your download code appears here.</p>'}</div><div class="mobile-install-instructions"><h3>Scan to download</h3><ol><li>Connect your phone and this computer to the same Wi-Fi or local network.</li><li>Generate a code, then scan it with your phone camera.</li><li>Open the link and download the signed APK. Install it over your existing app to keep your data.</li></ol><p class="feature-note">The installer is shared directly by this computer. No GitHub login is needed. Sharing expires after ten minutes or when Mreader closes. If Windows asks, allow Mreader on private networks.</p>${featureState.mobileDownloadError?`<p class="notice" role="alert">${esc(featureState.mobileDownloadError)}</p>`:''}${active?`<label>Computer address<select id="mobile-download-address" aria-label="Computer address">${code.addresses.map(address=>`<option ${address===code.address?'selected':''}>${esc(address)}</option>`).join('')}</select></label><label>Download link<input id="mobile-download-link" aria-label="Android APK download link" readonly value="${esc(code.url)}"></label><p role="status">Sharing until ${new Date(code.expiresAt).toLocaleTimeString()}</p><div class="button-row">${button('android-download-copy','Copy link','secondary')}${button('android-download-start','New code','secondary')}${button('android-download-stop','Stop sharing','secondary')}</div>`:`${code?'<p role="status">This download code has expired.</p>':''}${button('android-download-start',featureState.mobileDownloadBusy?'Generating…':'Generate download code','primary',featureState.mobileDownloadBusy?'disabled':'')}`}</div></div></section>`;
+}
+async function startMobileDownload(address=null) {
+  if(featureState.mobileDownloadBusy)return;
+  featureState.mobileDownloadBusy=true;featureState.mobileDownloadError='';render();
+  try{
+    featureState.mobileDownload=await api('mobile_download_start',{address});
+    clearTimeout(featureState.mobileDownloadTimer);
+    featureState.mobileDownloadTimer=setTimeout(()=>{if(state.page==='Settings')render();},Math.max(0,featureState.mobileDownload.expiresAt-Date.now()+100));
+  }catch(error){featureState.mobileDownloadError=String(error);}
+  finally{featureState.mobileDownloadBusy=false;render();}
+}
+document.addEventListener('change',event=>{if(event.target.id==='mobile-download-address')startMobileDownload(event.target.value);});
+document.addEventListener('click',async event=>{
+  if(event.target.closest('[data-action]')?.dataset.action!=='android-download-copy')return;
+  try{await navigator.clipboard.writeText(featureState.mobileDownload.url);toast('Download link copied');}catch{document.querySelector('#mobile-download-link')?.select();toast('Select and copy the download link');}
+});
 function sourceLabel(id) {
   if (!id) return "No source selected";
   if (id.startsWith("apk:")) return featureState.apk.installed.flatMap(e => e.extension.sources).find(s => "apk:"+s.id===id)?.name || "APK extension";
@@ -55,15 +89,16 @@ function extensionView() {
 }
 function accountView() {
   const c = featureState.cloud;
-  return `<section class="feature-panel"><div class="feature-heading"><div><h2>Account & cross-device progress</h2><p>${c.profile === "account" ? "Your account library is stored separately from this device’s guest library." : "Sign in to the same account on supported builds to share your library and reading progress."}</p></div><span class="connection-pill">${!c.configured ? "Not configured" : c.signedIn ? "Signed in" : "Ready to sign in"}</span></div>${c.signedIn ? `<p>${esc(c.email || "Your account")}</p><p class="sub">${featureState.syncing ? "Syncing…" : c.lastSync ? "Last synced " + new Date(c.lastSync).toLocaleString() : "Not synced yet"}${featureState.syncError ? " · " + esc(featureState.syncError) : ""}</p><div class="button-row">${button("cloud-sync", "Sync now", "primary")}${button("cloud-logout", "Sign out")}</div>` : !c.configured ? '<p class="notice">Managed account sync has not been configured for this build. Local reading and extensions work now; cross-device sync requires a managed project connection.</p>' : `<form id="account-form" class="account-form"><input name="email" type="email" required autocomplete="username" placeholder="Email" aria-label="Account email"><input name="password" type="password" minlength="8" required autocomplete="current-password" placeholder="Password" aria-label="Account password"><div class="button-row"><button type="submit" class="primary">Sign in</button><button type="submit" class="secondary" name="register" value="yes">Create account</button></div></form>`}<details class="service-setup"><summary>Managed service setup</summary><p>Configure once per build/device using a Supabase project with the supplied sync schema. This does not run a server on your computer. Never enter a secret or service-role key.</p><form id="cloud-config-form" class="account-form"><input name="url" type="url" required value="${esc(c.url || "")}" placeholder="https://project.supabase.co" aria-label="Managed project URL"><input name="publicKey" required value="${esc(c.publicKey || "")}" placeholder="Public publishable / anon key" aria-label="Public project key"><button class="secondary" type="submit" ${c.signedIn ? "disabled" : ""}>Save service connection</button></form></details><p class="feature-note">Sync shares metadata, extension definitions, favorites, and reading progress. It excludes passwords, local file paths, and manga bytes. Local files must be imported on each device. Use the same account on each device to share progress.</p></section>`;
+  return `<section class="feature-panel"><div class="feature-heading"><div><h2>Account & cross-device progress</h2><p>${c.profile === "account" ? "Your account library is stored separately from this device’s guest library." : "Sign in to the same account on supported builds to share your library and reading progress."}</p></div><span class="connection-pill">${!c.configured ? "Not configured" : c.signedIn ? "Signed in" : "Ready to sign in"}</span></div>${c.signedIn ? `<p>${esc(c.email || "Your account")}</p><p class="sub">${featureState.syncing ? "Syncing…" : c.lastSync ? "Last synced " + new Date(c.lastSync).toLocaleString() : "Not synced yet"}${featureState.syncError ? " · " + esc(featureState.syncError) : ""}</p><div class="button-row">${button("cloud-sync", "Sync now", "primary")}${button("cloud-logout", "Sign out")}</div>` : !c.configured ? '<p class="notice">Managed account sync has not been configured for this build. Local reading and extensions work now; cross-device sync requires a managed project connection.</p>' : `<form id="account-form" class="account-form"><input name="email" type="email" required autocomplete="username" placeholder="Email" aria-label="Account email"><input name="password" type="password" minlength="8" required autocomplete="current-password" placeholder="Password" aria-label="Account password"><div class="button-row"><button type="submit" class="primary">Sign in</button><button type="submit" class="secondary" name="register" value="yes">Create account</button></div></form>`}<p class="feature-note">Sync shares metadata, extension definitions, favorites, and reading progress. It excludes passwords, local file paths, and manga bytes. Local files must be imported on each device. Use the same account on each device to share progress.</p></section>`;
 }
 function apkView() {
   const a=featureState.apk, q=featureState.apkQuery.trim().toLowerCase();
   const entries=a.repositories.flatMap(r => r.catalog.extensions.map(extension => ({repository:r.url,extension})));
   const filtered=entries.filter(({extension:e}) => q ? `${e.name} ${e.package} ${e.sources.map(s=>s.name+" "+s.language).join(" ")}`.toLowerCase().includes(q) : e.sources.some(s=>s.language==="en"));
   const installed=p=>a.installed.find(e=>e.extension.package===p);
+  const layout=state.settings.apkLayout || "list";
   filtered.sort((a,b)=>Number(!!installed(b.extension.package))-Number(!!installed(a.extension.package)) || a.extension.name.localeCompare(b.extension.name));
-  return `<section class="feature-panel"><div class="feature-heading"><div><h2>APK source extensions</h2><p>Add a repository you choose, then install its extensions on this device. Your library and progress use the same source IDs on desktop and Android.</p></div></div><p class="feature-note">Extensions run third-party code. Install only from repositories you trust. Android runs APKs directly; desktop downloads a local compatibility runtime on first install (about 344 MB). No account hosting is required for extensions.</p><details open><summary>Add extension repository</summary><form id="apk-repository-form" class="account-form"><input name="url" type="url" required placeholder="HTTPS repository or index.pb URL" aria-label="Extension repository URL"><input name="fingerprint" pattern="[a-fA-F0-9]{64}" placeholder="Trusted signing fingerprint (64 hex characters)" aria-label="Repository signing fingerprint"><button class="secondary" ${featureState.apkBusy?"disabled":""}>Add repository</button></form></details>${featureState.apkBusy?'<p role="status"><span class="spinner"></span> Preparing extension… First desktop install downloads the runtime.</p>':""}${featureState.apkError?`<p class="notice" role="alert">${esc(featureState.apkError)}</p>`:""}${entries.length?`<label class="apk-search-label">Find an extension<input id="apk-search" type="search" value="${esc(featureState.apkQuery)}" placeholder="Source name or language (default: English)"></label><p class="sub">${filtered.length} matching packages · ${a.installed.length} installed on this device</p>${filtered.slice(0,60).map(({extension:e,repository})=>{const old=installed(e.package),up=old&&old.extension.versionCode<e.versionCode;return `<div class="extension-row"><div><b>${esc(e.name)}</b><small>${esc(e.version)} · API ${esc(e.api)} · ${[...new Set(e.sources.map(s=>s.language))].map(esc).join(", ")}${e.contentWarning>=2?" · Mature content":""}</small><small>${esc(e.package)}</small></div><div class="button-row">${!old||up?button("apk-install",up?"Update":"Install","secondary",`data-package="${esc(e.package)}" data-repository="${esc(repository)}" ${featureState.apkBusy?"disabled":""}`):'<span class="connection-pill">Installed</span>'}${old?button("apk-remove",featureState.cloud.signedIn?"Remove everywhere":"Uninstall","secondary",`data-package="${esc(e.package)}" ${featureState.apkBusy?"disabled":""}`):""}</div></div>`}).join("")}${filtered.length>60?'<p class="sub">Showing 60 results. Search to narrow the list.</p>':""}`:'<p class="sub">Add a repository to browse installable sources.</p>'}<p class="feature-note">Installed source choices sync with your account; each device prepares its own copy. Uninstalling preserves your library and progress. A source may require its own website account or verification; installing an extension does not grant access.</p></section>`;
+  return `<section class="feature-panel apk-panel"><div class="feature-heading"><div><h2>APK source extensions</h2><p>Add a repository you choose, then install its extensions on this device. Your library and progress use the same source IDs on desktop and Android.</p></div></div><p class="feature-note">Extensions run third-party code. Install only from repositories you trust. Android runs APKs directly; desktop downloads a local compatibility runtime on first install (about 344 MB). No account hosting is required for extensions.</p><details open><summary>Add extension repository</summary><form id="apk-repository-form" class="account-form"><input name="url" type="url" required placeholder="HTTPS repository or index.pb URL" aria-label="Extension repository URL"><input name="fingerprint" pattern="[a-fA-F0-9]{64}" placeholder="Trusted signing fingerprint (64 hex characters)" aria-label="Repository signing fingerprint"><button class="secondary" ${featureState.apkBusy?"disabled":""}>Add repository</button></form></details>${featureState.apkBusy?'<p role="status"><span class="spinner"></span> Preparing extension… First desktop install downloads the runtime.</p>':""}${featureState.apkError?`<p class="notice" role="alert">${esc(featureState.apkError)}</p>`:""}${entries.length?`<label class="apk-search-label">Find an extension<input id="apk-search" type="search" value="${esc(featureState.apkQuery)}" placeholder="Source name or language (default: English)"></label><div class="apk-display-controls" role="group" aria-label="Extension layout">${button("apk-layout","List",layout==="list"?"primary":"secondary",'data-layout="list" aria-pressed="'+(layout==="list")+'"')}${button("apk-layout","Stacked",layout==="stacked"?"primary":"secondary",'data-layout="stacked" aria-pressed="'+(layout==="stacked")+'"')}</div><p class="sub">${filtered.length} matching packages · ${a.installed.length} installed on this device</p><div class="apk-extension-results apk-layout-${layout}">${filtered.slice(0,60).map(({extension:e,repository})=>{const old=installed(e.package),up=old&&old.extension.versionCode<e.versionCode;return `<div class="extension-row"><div><b>${esc(e.name)}</b><small>${esc(e.version)} · API ${esc(e.api)} · ${[...new Set(e.sources.map(s=>s.language))].map(esc).join(", ")}${e.contentWarning>=2?" · Mature content":""}</small><small>${esc(e.package)}</small></div><div class="button-row">${!old||up?button("apk-install",up?"Update":"Install","secondary",`data-package="${esc(e.package)}" data-repository="${esc(repository)}" ${featureState.apkBusy?"disabled":""}`):'<span class="connection-pill">Installed</span>'}${old?button("apk-remove",featureState.cloud.signedIn?"Remove everywhere":"Uninstall","secondary",`data-package="${esc(e.package)}" ${featureState.apkBusy?"disabled":""}`):""}</div></div>`}).join("")}</div>${filtered.length>60?'<p class="sub">Showing 60 results. Search to narrow the list.</p>':""}`:'<p class="sub">Add a repository to browse installable sources.</p>'}<p class="feature-note">Installed source choices sync with your account; each device prepares its own copy. Uninstalling preserves your library and progress. A source may require its own website account or verification; installing an extension does not grant access.</p></section>`;
 }
 async function apkAction(command,args) {
   if(featureState.apkBusy)return;
@@ -88,6 +123,10 @@ document.addEventListener("input", e=>{
 });
 document.addEventListener("click",async e=>{
   const t=e.target.closest("[data-action]");if(!t)return;
+  if(t.dataset.action==="settings-section"){featureState.settingsTab=t.dataset.section;render();}
+  if(t.dataset.action==="apk-layout"){try{applySnapshot(await api('save_settings',{settings:{...state.settings,apkLayout:t.dataset.layout,komgaPassword:''}}));render();}catch(error){toast(error);}}
+  if(t.dataset.action==="android-download-start")await startMobileDownload();
+  if(t.dataset.action==="android-download-stop"){try{await api('mobile_download_stop');clearTimeout(featureState.mobileDownloadTimer);featureState.mobileDownload=null;render();}catch(error){toast(error);}}
   if(t.dataset.action==="apk-install")await apkAction("apk_install",{repository:t.dataset.repository,package:t.dataset.package});
   if(t.dataset.action==="apk-remove")await apkAction("apk_remove",{package:t.dataset.package});
 });
@@ -251,18 +290,11 @@ document.addEventListener("click", async (e) => {
   }
 });
 document.addEventListener("submit", async (e) => {
-  if (!["cloud-config-form", "account-form"].includes(e.target.id)) return;
+  if (e.target.id !== "account-form") return;
   e.preventDefault();
   const form = new FormData(e.target);
   try {
-    if (e.target.id === "cloud-config-form") {
-      featureState.cloud = await api("cloud_configure", {
-        url: form.get("url"),
-        publicKey: form.get("publicKey"),
-      });
-      render();
-      toast("Managed service configured");
-    } else {
+    {
       if (state.busy) throw Error("Wait for the current import to finish");
       const result = await api("cloud_auth", {
         email: form.get("email"),

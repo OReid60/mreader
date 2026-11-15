@@ -27,6 +27,7 @@ if (Test-Path "$sdkRoot\Lib") {
         $env:WindowsSDKVersion = "$sdkVersion\"
     }
 }
+& (Join-Path $PSScriptRoot 'prepare-mobile-apk.ps1')
 New-Item -ItemType Directory -Force "$projectRoot\dist" | Out-Null
 Copy-Item "$projectRoot\index.html","$projectRoot\app.js","$projectRoot\features.js","$projectRoot\style.css" "$projectRoot\dist" -Force
 if (Test-Path "$projectRoot\mobile.js") { Copy-Item "$projectRoot\mobile.js" "$projectRoot\dist" -Force }
