@@ -12,6 +12,8 @@ Prerequisites: Rust MSVC, Visual Studio C++ Build Tools, Windows SDK, Node/npm, 
 
 ## Android ARM64 phones and tablets
 
+Version 0.3.6 adds **Reader layout → Single page / Continuous strip** in the reader controls (tap the page center to reveal them). Continuous strip places all chapters supplied by the selected source in one vertical scroll, with black separators showing the current page and the next page/chapter. Images load near the viewport instead of downloading the whole title. Layout preference lives in the shared Rust/SQLite settings, with old profiles defaulting to Single page. Single pages are centered vertically and horizontally. PDF chapters continue to use the single-page/PDF reader.
+
 [Android reader update 0.3.5](https://github.com/OReid60/mreader/releases/tag/v0.3.5-fullscreen-reader) adds immersive reading. Mobile readers open with app navigation, reader toolbars, and Android system bars hidden. Tap the center third to reveal controls; tap the edges to change pages in the selected reading direction. Android Back reveals controls from immersive mode, and closing the reader restores normal navigation. Install over the existing app to retain its account, extensions, and saved positions. Frontend phone/tablet checks and signed-APK checks passed; on-device visual confirmation is still required.
 
 Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps1`.
