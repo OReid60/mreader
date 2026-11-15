@@ -19,14 +19,17 @@ with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as book:
     for index, color in enumerate([(65, 91, 160), (64, 148, 111), (188, 133, 56)], 1):
         book.writestr(f"page-{index}.png", png(*color))
 
+# Three pages keep the PDF unfinished when the resume check reaches page two.
 text = b"BT /F1 22 Tf 50 720 Td (Mreader PDF validation) Tj ET\n"
 objects = [
     b"<< /Type /Catalog /Pages 2 0 R >>",
-    b"<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>",
+    b"<< /Type /Pages /Kids [3 0 R 6 0 R 8 0 R] /Count 3 >>",
     b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
     b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     b"<< /Length " + str(len(text)).encode() + b" >>\nstream\n" + text + b"endstream",
     b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>",
+    b"<< /Length " + str(len(text)).encode() + b" >>\nstream\n" + text + b"endstream",
+    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 9 0 R >>",
     b"<< /Length " + str(len(text)).encode() + b" >>\nstream\n" + text + b"endstream",
 ]
 document = bytearray(b"%PDF-1.4\n")
