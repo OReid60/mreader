@@ -5,7 +5,7 @@ camera. The QR opens the public HTTPS download page. Tap **Download Android APK*
 Your phone needs internet access; it does not need the same Wi-Fi, GitHub access,
 or a running desktop computer after the QR is scanned.
 
-The page currently provides the original signed ARM64 Android 0.3.9 installer.
+The page provides the latest published signed ARM64 Android installer.
 Install over the existing app to retain its data. Desktop and Android version
 numbers are independent.
 
