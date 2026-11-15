@@ -55,9 +55,9 @@ pub struct BackupChapter {
  #[prost(int64,tag="2")] pub read:i64,
 }
 #[derive(Serialize)] #[serde(rename_all="camelCase")]
-pub struct Preview { pub manga:Vec<Entry>,pub categories:Vec<String>,pub sources:Vec<SourceEntry>,pub repositories:Vec<RepoEntry>,pub read:usize,pub chapters:usize,pub warnings:Vec<String> }
+pub struct Preview { pub manga:Vec<Entry>,pub library_count:usize,pub categories:Vec<String>,pub sources:Vec<SourceEntry>,pub repositories:Vec<RepoEntry>,pub read:usize,pub chapters:usize,pub warnings:Vec<String> }
 #[derive(Serialize)] #[serde(rename_all="camelCase")]
-pub struct Entry {pub title:String,pub source_id:String,pub source:String,pub chapters:usize,pub read:usize,pub in_progress:usize,pub unread:usize,pub category:String,pub installed:bool,pub existing:bool}
+pub struct Entry {pub title:String,pub in_library:bool,pub source_id:String,pub source:String,pub chapters:usize,pub read:usize,pub in_progress:usize,pub unread:usize,pub category:String,pub installed:bool,pub existing:bool}
 #[derive(Serialize)] #[serde(rename_all="camelCase")]
 pub struct SourceEntry {pub id:String,pub name:String,pub installed:bool,pub packages:Vec<String>}
 #[derive(Serialize)] pub struct RepoEntry {pub url:String,pub name:String,pub fingerprint:String}
@@ -75,22 +75,23 @@ fn id(m:&Manga)->String{format!("apk:{}:{:x}",m.source,Sha256::digest(m.url.as_b
 fn category<'a>(b:&'a Backup,m:&Manga)->&'a str{m.categories.first().and_then(|id|b.categories.iter().find(|c|c.id==*id||(c.id==0&&c.order==*id))).map(|c|c.name.as_str()).unwrap_or("Default")}
 pub fn preview(b:&Backup,store:&Store,apk:&crate::apk::State)->Result<Preview>{
  let existing=store.books()?;let mut sources=Vec::new();let mut manga=Vec::new();
- for m in b.manga.iter().filter(|m|m.favorite.unwrap_or(true)){
+ for m in &b.manga{
   let sid=m.source.to_string();let name=b.sources.iter().find(|s|s.id==m.source).map(|s|s.name.clone()).unwrap_or_else(||format!("Source {sid}"));
   let installed=apk.installed.iter().any(|e|e.extension.sources.iter().any(|s|s.id==sid));
   if !sources.iter().any(|s:&SourceEntry|s.id==sid){let packages=apk.repositories.iter().flat_map(|r|&r.catalog.extensions).filter(|e|e.sources.iter().any(|s|s.id==sid)).map(|e|e.name.clone()).collect();sources.push(SourceEntry{id:sid.clone(),name:name.clone(),installed,packages});}
   let read=m.chapters.iter().filter(|c|c.read).count();let in_progress=m.chapters.iter().filter(|c|!c.read&&c.page>0).count();
-  manga.push(Entry{title:m.title.clone(),source_id:sid,source:name,chapters:m.chapters.len(),read,in_progress,unread:m.chapters.len()-read-in_progress,category:category(b,m).into(),installed,existing:existing.iter().any(|old|old.id==id(m))});
+  manga.push(Entry{title:m.title.clone(),in_library:m.favorite.unwrap_or(true),source_id:sid,source:name,chapters:m.chapters.len(),read,in_progress,unread:m.chapters.len()-read-in_progress,category:category(b,m).into(),installed,existing:existing.iter().any(|old|old.id==id(m))});
  }
  let chapters=manga.iter().map(|m|m.chapters).sum();let read=manga.iter().map(|m|m.read).sum();
  let mut warnings=vec!["Backups contain library/progress metadata, not downloaded pages, extension APKs, or source login sessions. Install missing sources in Settings before reading.".into()];
  if b.manga.iter().any(|m|m.categories.len()>1){warnings.push("Mreader currently uses the first category assigned to each title.".into());}
- Ok(Preview{manga,categories:b.categories.iter().map(|c|c.name.clone()).collect(),sources,repositories:b.repositories.iter().map(|r|RepoEntry{url:r.url.clone(),name:r.name.clone(),fingerprint:r.key.clone()}).collect(),read,chapters,warnings})
+ let library_count=manga.iter().filter(|m|m.in_library).count();
+ Ok(Preview{manga,library_count,categories:b.categories.iter().map(|c|c.name.clone()).collect(),sources,repositories:b.repositories.iter().map(|r|RepoEntry{url:r.url.clone(),name:r.name.clone(),fingerprint:r.key.clone()}).collect(),read,chapters,warnings})
 }
-pub fn import(b:&Backup,store:&Store)->Result<usize>{
+pub fn import(b:&Backup,store:&Store,include_history:bool)->Result<usize>{
  // One SQLite transaction makes confirmation atomic, including category records.
  let mut db=store.0.lock().map_err(|e|e.to_string())?;let tx=db.transaction().map_err(|e|e.to_string())?;let mut count=0;
- for m in b.manga.iter().filter(|m|m.favorite.unwrap_or(true)){
+ for m in b.manga.iter().filter(|m|include_history||m.favorite.unwrap_or(true)){
   if m.title.trim().is_empty()||m.url.is_empty(){continue;}
   let book_id=id(m);let old:Option<String>=tx.query_row("SELECT data FROM books WHERE id=?1",[&book_id],|r|r.get(0)).ok();
   let mut book=if let Some(text)=old{serde_json::from_str::<Book>(&text).map_err(|e|e.to_string())?}else{Book{id:book_id.clone(),title:m.title.clone(),author:m.author.clone().unwrap_or_default(),description:m.description.clone().unwrap_or_default(),source:format!("apk:{}",m.source),remote_id:m.url.clone(),cover:serde_json::json!({"mangaUrl":m.url,"mangaTitle":m.title}).to_string(),path:String::new(),status:match m.status{1=>"Ongoing",2=>"Completed",6=>"Hiatus",_=>"Unknown"}.into(),tags:m.genres.iter().filter(|t|!t.starts_with("mreader:")).cloned().collect(),chapters:vec![],favorite:false}};
@@ -111,7 +112,8 @@ pub fn import(b:&Backup,store:&Store)->Result<usize>{
 }
 #[cfg(test)] mod tests{
  use super::*;
- #[test] fn migration_preview_is_read_only_and_import_is_idempotent(){let m=Manga{source:123,url:"/m".into(),title:"Fixture".into(),favorite:Some(true),chapters:vec![BackupChapter{url:"/c".into(),name:"Chapter".into(),read:true,page:4,number:1.,..Default::default()}],..Default::default()};let b=Backup{manga:vec![m],..Default::default()};let decoded=decode(&b.encode_to_vec()).unwrap();let s=Store::open(std::path::Path::new(":memory:")).unwrap();assert_eq!(preview(&decoded,&s,&Default::default()).unwrap().read,1);assert!(s.books().unwrap().is_empty());import(&decoded,&s).unwrap();import(&decoded,&s).unwrap();assert_eq!(s.books().unwrap().len(),1);assert!(s.progress().unwrap()[0].completed);assert!(!s.books().unwrap()[0].chapters[0].downloaded);}
+ #[test] fn history_only_titles_require_opt_in(){let b=Backup{manga:vec![Manga{source:1,url:"/saved".into(),title:"Saved".into(),favorite:Some(true),..Default::default()},Manga{source:1,url:"/history".into(),title:"History".into(),favorite:Some(false),..Default::default()}],..Default::default()};let s=Store::open(std::path::Path::new(":memory:")).unwrap();let p=preview(&b,&s,&Default::default()).unwrap();assert_eq!(p.manga.len(),2);assert_eq!(p.library_count,1);assert_eq!(import(&b,&s,false).unwrap(),1);assert_eq!(s.books().unwrap().len(),1);assert_eq!(import(&b,&s,true).unwrap(),2);assert_eq!(s.books().unwrap().len(),2);}
+ #[test] fn migration_preview_is_read_only_and_import_is_idempotent(){let m=Manga{source:123,url:"/m".into(),title:"Fixture".into(),favorite:Some(true),chapters:vec![BackupChapter{url:"/c".into(),name:"Chapter".into(),read:true,page:4,number:1.,..Default::default()}],..Default::default()};let b=Backup{manga:vec![m],..Default::default()};let decoded=decode(&b.encode_to_vec()).unwrap();let s=Store::open(std::path::Path::new(":memory:")).unwrap();assert_eq!(preview(&decoded,&s,&Default::default()).unwrap().read,1);assert!(s.books().unwrap().is_empty());import(&decoded,&s,false).unwrap();import(&decoded,&s,false).unwrap();assert_eq!(s.books().unwrap().len(),1);assert!(s.progress().unwrap()[0].completed);assert!(!s.books().unwrap()[0].chapters[0].downloaded);}
  #[test] fn corrupt_backup_is_rejected(){assert!(decode(b"not a backup").is_err());}
  #[test] #[ignore="Reads an explicitly supplied local backup without importing"] fn inspect_user_backup(){let path=std::env::var("MREADER_MIHON_BACKUP").unwrap();let b=decode(&std::fs::read(path).unwrap()).unwrap();let s=Store::open(std::path::Path::new(":memory:")).unwrap();let p=preview(&b,&s,&Default::default()).unwrap();println!("MIHON SUMMARY: {} manga / {} chapters / {} read / {} sources / {} repositories",p.manga.len(),p.chapters,p.read,p.sources.len(),p.repositories.len());}
 }

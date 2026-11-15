@@ -1182,12 +1182,12 @@ fn migration_preview(core:State<Arc<Core>>,request:tauri::ipc::Request<'_>)->Res
     *core.migration_preview.lock().map_err(|e|e.to_string())?=Some(backup);Ok(preview)
 }
 #[tauri::command]
-async fn migration_import(core:State<'_,Arc<Core>>,confirmed:bool)->Result<serde_json::Value>{
+async fn migration_import(core:State<'_,Arc<Core>>,confirmed:bool,include_history:Option<bool>)->Result<serde_json::Value>{
     if !confirmed{return Err("Review and confirm the migration first".into())}
     let _guard=core.cloud.gate.lock().await;
     let mut pending=core.migration_preview.lock().map_err(|e|e.to_string())?;
     let backup=pending.as_ref().ok_or("Choose and preview a backup first")?;
-    let count=migration::import(backup,&core.store)?;*pending=None;
+    let count=migration::import(backup,&core.store,include_history.unwrap_or(false))?;*pending=None;
     Ok(serde_json::json!({"imported":count,"snapshot":core.snapshot()?}))
 }
 

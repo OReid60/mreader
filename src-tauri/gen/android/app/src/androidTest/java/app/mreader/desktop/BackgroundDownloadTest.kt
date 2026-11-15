@@ -29,7 +29,7 @@ class BackgroundDownloadTest {
   val databases=context.dataDir.walkTopDown().filter{it.isFile&&it.name=="library.sqlite"}.toList()
   assertTrue("Library database missing",databases.isNotEmpty())
   fun job():JSONObject? {
-   for(file in databases){val db=SQLiteDatabase.openDatabase(file.absolutePath,null,SQLiteDatabase.OPEN_READONLY);try{db.rawQuery("SELECT data FROM download_queue WHERE id=1",null).use{c->if(c.moveToFirst()){val jobs=org.json.JSONArray(c.getString(0));for(i in 0 until jobs.length()){val j=jobs.getJSONObject(i);if(j.getString("id")==book)return j}}}}finally{db.close()}}
+   for(file in databases){val db=SQLiteDatabase.openDatabase(file.absolutePath,null,SQLiteDatabase.OPEN_READONLY);try{db.rawQuery("SELECT data FROM download_queue WHERE id=1",null).use{c->if(c.moveToFirst()){val jobs=org.json.JSONArray(c.getString(0));for(i in 0 until jobs.length()){val j=jobs.getJSONObject(i);if(j.getString("id")==book)return j}}}}catch(_:android.database.sqlite.SQLiteException){}finally{db.close()}}
    return null
   }
   val before=job()?:error("Queue was not persisted")

@@ -26,6 +26,9 @@ the module is in More/Settings with the other backup controls. It shows manga,
 read/in-progress/unread chapter counts, categories, source IDs, installed/missing
 sources and repository references. Import is a separate explicit confirmation.
 The parser handles gzip/protobuf with compressed and expanded size limits.
+The preview distinguishes saved library titles from history-only entries. Import
+defaults to saved titles; including history-only titles requires selecting its
+checkbox before confirmation.
 
 Import preserves source IDs and chapter URLs, merges identical library records,
 keeps existing downloads/read completion, and does not infer additional read
