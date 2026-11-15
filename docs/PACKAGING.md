@@ -2,7 +2,7 @@
 
 The Rust library is shared across Windows, Linux, and Android. Each platform still needs its own compiler and packaging tools; changing a filename does not convert an executable between operating systems.
 
-Current coordinated release: [0.3.6 continuous reader](https://github.com/OReid60/mreader/releases/tag/v0.3.6-continuous-reader). It includes centered single pages and a saved choice of Single page or Continuous strip, with labeled separators and lazy image loading. Pixel 7 and Windows have been updated in place. Frontend reader tests, 27 Rust tests, a live APK source check, and 13 packaged Linux checks passed. Physical-device review of the new strip is pending.
+Current coordinated release: [0.3.6 continuous reader](https://github.com/OReid60/mreader/releases/tag/v0.3.6-continuous-reader). It includes centered single pages and a saved choice of Single page or Continuous strip, with labeled separators and lazy image loading. Pixel 7 and Windows have been updated in place. Frontend reader tests, 27 Rust tests, a live APK source check, and 13 packaged Linux checks passed. Centering, page separators, and continuous chapter transitions were confirmed on the Pixel 7.
 
 Progress sync baseline: [0.3.4 progress sync fix](https://github.com/OReid60/mreader/releases/tag/v0.3.4-progress-sync) removed PostgreSQL-incompatible NUL-separated wire keys. Existing local positions and accounts are preserved; no Supabase schema change is required. Cross-device progress was confirmed with the installed Pixel 7 and Windows apps: Kagurabachi chapter 2 resumed at page 3 from phone to desktop, then page 4 from desktop to phone.
 
