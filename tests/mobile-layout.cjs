@@ -15,7 +15,8 @@ const { pathToFileURL } = require('node:url');
     await page.addInitScript(() => {
       const settings = { theme:'dark',language:'en',direction:'ltr',fit:'width',dataSaver:false,komgaUrl:'',komgaUser:'' };
       const books = [95,35,347,103,4,7].map((count,index) => ({ id:`test:${index}`, title:`Library title ${index + 1}`,source:'local',author:'Layout fixture',description:'Synthetic test fixture',tags:['Action'],favorite:false,status:'Local',path:'fixture.cbz',chapters:Array.from({length:count},(_,n)=>({id:`c:${index}:${n}`,number:String(n+1),title:'Chapter',pages:3,downloaded:false,path:''})) }));
-      const snapshot = () => structuredClone({ books,progress:[],settings,dataDir:'Layout test' });
+      let categories=['Default','nsfw'];
+      const snapshot = () => structuredClone({ books,progress:[],settings,categories,dataDir:'Layout test' });
       const extension={name:'MANGA Plus by SHUEISHA',package:'fixture.publisher',version:'1.6.1',versionCode:106001,api:'1.6',contentWarning:1,sources:[{id:'1998944621602463790',name:'MANGA Plus by SHUEISHA',language:'en'}]};
       const apk={repositories:[{url:'https://fixture.test/index.pb',catalog:{name:'Test catalog',extensions:[extension]}}],installed:[]};
       window.__TAURI__ = {
@@ -42,9 +43,15 @@ const { pathToFileURL } = require('node:url');
           if (name === 'cover_data') throw Error('Synthetic cover is provided by the layout test');
           if (name === 'chapters') return structuredClone(books.find(book => book.id === args.bookId));
           if (name === 'search_source') return {books:structuredClone(books),total:books.length};
+          if (name === 'edit_category') {
+            if(args.action==='create')categories.push(args.name.trim());
+            if(args.action==='rename'){categories=categories.map(n=>n===args.name?args.replacement:n);books.forEach(b=>b.tags=b.tags.map(t=>t==='mreader:category:'+args.name?'mreader:category:'+args.replacement:t));}
+            if(args.action==='delete'){categories=categories.filter(n=>n!==args.name);books.forEach(b=>b.tags=b.tags.filter(t=>t!=='mreader:category:'+args.name));}
+            return snapshot();
+          }
           if (name === 'set_book_category') {
             const book = books.find(book => book.id === args.bookId);
-            book.tags = args.category === 'nsfw' ? ['Action','mreader:category:nsfw'] : ['Action'];
+            book.tags = args.category === 'Default' ? ['Action'] : ['Action','mreader:category:'+args.category];
             return snapshot();
           }
           throw Error(`Unexpected command: ${name}`);
@@ -70,18 +77,44 @@ const { pathToFileURL } = require('node:url');
     assert.equal(await phone.locator('.mobile-bottom button').count(),5);
     assert.equal(await phone.locator('.sidebar').count(),0);
     assert.equal(await phone.locator('.hero').count(),0);
-    assert.equal(await phone.locator('.mobile-categories button').allTextContents().then(x=>x.join(',')),'Default,nsfw');
+    assert.equal(await phone.locator('.mobile-categories button').allTextContents().then(x=>x.join(',')),'Default,nsfw,+ Categories');
     const columns = await phone.locator('.mobile-grid').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length);
     assert.equal(columns,3);
     assert(await phone.evaluate(()=>document.documentElement.scrollWidth <= innerWidth));
     await phone.screenshot({path:path.join(output,'mobile-library-layout.png')});
     await phone.locator('.card[data-id="test:0"]').click();
-    await phone.getByRole('button',{name:'Move to nsfw',exact:true}).click();
+    await phone.getByRole('button',{name:'Category: Default',exact:true}).click();
+    await phone.getByRole('button',{name:'nsfw',exact:true}).last().click();
     await phone.locator('[data-action="close-detail"]').click();
     assert.equal(await phone.locator('.mobile-grid .card').count(),5);
     await phone.locator('[data-action="mobile-category"][data-category="nsfw"]').click();
     assert.equal(await phone.locator('.mobile-grid .card').count(),1);
     assert.equal(await phone.locator('.mobile-grid .card h3').textContent(),'Library title 1');
+    await phone.getByRole('button',{name:'Manage categories',exact:true}).click();
+    await phone.locator('#category-name').fill('Action & Adventure');
+    await phone.getByRole('button',{name:'Create category',exact:true}).click();
+    await phone.waitForFunction(()=>state.categories.includes('Action & Adventure'));
+    assert(await phone.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    await phone.screenshot({path:path.join(output,'mobile-category-manager.png')});
+    await phone.locator('[data-action="mobile-close-sheet"]').click();
+    await phone.locator('[data-action="mobile-category"][data-category="nsfw"]').click();
+    await phone.locator('.card[data-id="test:0"]').click();
+    await phone.getByRole('button',{name:'Category: nsfw',exact:true}).click();
+    await phone.locator('#mobile-sheet').getByRole('button',{name:'Action & Adventure',exact:true}).click();
+    await phone.locator('[data-action="close-detail"]').click();
+    await phone.getByRole('button',{name:'Manage categories',exact:true}).click();
+    await phone.locator('[data-action="mobile-edit-category"][data-name="Action & Adventure"]').click();
+    await phone.locator('#category-name').fill('Adventure');
+    await phone.getByRole('button',{name:'Save name',exact:true}).click();
+    await phone.waitForFunction(()=>state.categories.includes('Adventure'));
+    await phone.locator('[data-action="mobile-close-sheet"]').click();
+    assert.equal(await phone.locator('.mobile-grid .card').count(),1);
+    await phone.getByRole('button',{name:'Manage categories',exact:true}).click();
+    await phone.locator('[data-action="mobile-category-delete"][data-name="Adventure"]').click();
+    await phone.getByRole('button',{name:'Delete category',exact:true}).click();
+    await phone.waitForFunction(()=>!state.categories.includes('Adventure'));
+    await phone.locator('[data-action="mobile-close-sheet"]').click();
+    assert.equal(await phone.locator('.mobile-grid .card').count(),6);
     await phone.locator('[data-action="mobile-menu"]').click();
     await phone.locator('#mobile-sheet [data-page="Settings"]').click();
     assert(await phone.locator('#account-form').isVisible());
@@ -116,6 +149,12 @@ const { pathToFileURL } = require('node:url');
       if(!handleAppBack()||state.mobileSearch||state.query)throw Error('Back must dismiss search');
       if(!handleAppBack()||handleAppBack()!==false)throw Error('Accidental root back must not close the app');
     });
+    await desktop.getByRole('button',{name:'Manage categories',exact:true}).click();
+    await desktop.locator('#category-name').fill('Desktop group');
+    await desktop.getByRole('button',{name:'Create category',exact:true}).click();
+    await desktop.waitForFunction(()=>state.categories.includes('Desktop group'));
+    await desktop.locator('[data-action="mobile-close-sheet"]').click();
+    assert.equal(await desktop.locator('.category-tabs [data-category="Desktop group"]').count(),1);
     for(const tab of ['Library','Updates','History','Browse','Downloads','Settings']){
       await desktop.evaluate(tab=>navigate(tab),tab);
       assert((await desktop.locator('.main').boundingBox()).y<2,`${tab} must start at the top`);

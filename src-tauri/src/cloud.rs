@@ -35,6 +35,8 @@ pub struct Timed<T> {
 pub struct Document {
     pub schema_version: u32,
     #[serde(default)]
+    pub categories: BTreeMap<String, i64>,
+    #[serde(default)]
     pub books: BTreeMap<String, Timed<Book>>,
     #[serde(default)]
     #[serde(with = "progress_wire")]
@@ -88,6 +90,7 @@ impl Default for Document {
     fn default() -> Self {
         Self {
             schema_version: 1,
+            categories: BTreeMap::new(),
             books: BTreeMap::new(),
             progress: BTreeMap::new(),
             extensions: BTreeMap::new(),
@@ -146,6 +149,7 @@ impl Document {
                 },
             );
         }
+        document.categories = store.metadata("category")?;
         document.deletions = store.metadata("deleted")?;
         document.source_choices = crate::source_sync::load(store)?;
         Ok(document)
@@ -157,6 +161,8 @@ impl Document {
         if self.books.len() > 10000 || self.extensions.len() > 100 {
             return Err("Sync document exceeds supported library size".into());
         }
+        if self.categories.len() > 1000 { return Err("Too many library categories".into()); }
+        for (name, stamp) in &self.categories { crate::categories::validate(name)?; if *stamp < 0 { return Err("Invalid category timestamp".into()); } }
         if self.source_choices.len() > 201 {
             return Err("Too many synced source choices".into());
         }
@@ -195,6 +201,7 @@ impl Document {
         remote.validate()?;
         self.validate()?;
         let mut merged = remote.clone();
+        for (name, stamp) in &self.categories { let entry = merged.categories.entry(name.clone()).or_default(); *entry = (*entry).max(*stamp); }
         for (id, choice) in &self.source_choices {
             if merged
                 .source_choices
@@ -329,7 +336,8 @@ impl Document {
                 ))
             })
             .collect::<Result<BTreeMap<_, _>>>()?;
-        store.apply_source_values(&values, &self.deletions)
+        store.apply_source_values(&values, &self.deletions)?;
+        crate::categories::apply(store, &self.categories)
     }
 }
 impl Cloud {

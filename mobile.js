@@ -351,7 +351,44 @@ function useMobileLayout() {
   return isAndroid() || (globalThis.innerWidth || globalThis.window?.innerWidth || 1200) <= 760;
 }
 function bookCategory(book) {
-  return book.tags?.includes('mreader:category:nsfw') ? 'nsfw' : 'Default';
+  const category = book.tags?.find(tag => tag.startsWith('mreader:category:'))?.slice('mreader:category:'.length);
+  return category && (!state.categories || state.categories.includes(category)) ? category : 'Default';
+}
+function categoryTabs(mobile = false) {
+  const names = state.categories || ['Default','nsfw'];
+  return `<nav class="${mobile ? 'mobile-categories' : 'category-tabs'}" aria-label="Library categories">${names.map(name => `<button data-action="mobile-category" data-category="${esc(name)}" class="${(state.mobileCategory || 'Default') === name ? 'active' : ''}">${esc(name)}</button>`).join('')}${button('mobile-manage-categories', '+ Categories', 'category-manage', 'aria-label="Manage categories"')}</nav>`;
+}
+function categoryLayer(title, content) {
+  closeMobileSheet();
+  const layer = document.createElement('div');
+  layer.id='mobile-sheet'; layer.className='modal-backdrop mobile-sheet-backdrop category-backdrop';
+  layer.innerHTML=`<section class="modal mobile-sheet category-dialog" role="dialog" aria-modal="true" aria-label="${esc(title)}"><h2>${esc(title)}</h2>${content}<p class="category-error" role="alert"></p>${button('mobile-close-sheet','Close','secondary')}</section>`;
+  layer.addEventListener('click', e => { if(e.target===layer)closeMobileSheet(); });
+  document.body.append(layer);
+}
+function showCategories(bookId, editName) {
+  const names=state.categories || ['Default','nsfw'];
+  if(bookId) {
+    const book=bookById(bookId);
+    categoryLayer('Choose category', `<p>${esc(book.title)}</p><div class="category-choices">${names.map(name=>button('mobile-category-choose',`${bookCategory(book)===name?'✓ ':''}${esc(name)}`,'secondary',`data-id="${esc(bookId)}" data-category="${esc(name)}"`)).join('')}</div><p>Create groups from Library → Categories.</p>`);
+    return;
+  }
+  categoryLayer(editName ? 'Rename category' : 'Manage categories', `${!editName ? `<div class="category-rows">${names.map(name=>`<div><b>${esc(name)}</b>${name==='Default'?'<small>Uncategorized manga</small>':`${button('mobile-edit-category','Rename','secondary',`data-name="${esc(name)}"`)}${button('mobile-category-delete','Delete','secondary',`data-name="${esc(name)}"`)}`}</div>`).join('')}</div>`:''}<form id="category-form"><label>${editName?'Category name':'New category'}<input id="category-name" maxlength="60" required value="${esc(editName || '')}" placeholder="e.g. Action, Romance, To read"></label><button class="primary" type="submit">${editName?'Save name':'Create category'}</button></form>`);
+  document.querySelector('#category-form').addEventListener('submit',async event=>{
+    event.preventDefault(); const submit=event.target.querySelector('button');submit.disabled=true;
+    try { await changeCategory(editName?'rename':'create',editName || document.querySelector('#category-name').value,editName?document.querySelector('#category-name').value:undefined); }
+    catch(error){document.querySelector('.category-error').textContent=String(error);submit.disabled=false;}
+  });
+}
+function showCategoryDelete(name) {
+  categoryLayer('Delete category?', `<p>Delete “${esc(name)}”? Its manga will move to Default. Your manga and reading progress are kept.</p>${button('mobile-category-confirm-delete','Delete category','primary',`data-name="${esc(name)}"`)}`);
+}
+async function changeCategory(action,name,replacement) {
+  applySnapshot(await api('edit_category',{action,name,replacement:replacement || null}));
+  if(action==='create')state.mobileCategory=name.trim();
+  if(action==='rename')state.mobileCategory=replacement.trim();
+  if(state.detail)state.detail=bookById(state.detail.id);
+  render();if(state.detail)renderDetails();showCategories();
 }
 function mobileIcon(name) {
   if (name === 'more') return '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
@@ -368,7 +405,7 @@ function renderMobileApp(data, updateCount) {
   const title = state.page === 'Settings' ? 'More' : state.page;
   const search = state.mobileSearch || state.page === 'Browse';
   const header = `<header class="mobile-header"><h1>${title}</h1><div class="mobile-actions">${button('mobile-search',mobileIcon('search'),'mobile-icon','aria-label="Search manga"')}${button('mobile-filters',mobileIcon('filter'),'mobile-icon','aria-label="Filter and sort library"')}${button('mobile-menu',mobileIcon('menu'),'mobile-icon','aria-label="Library options"')}</div></header>`;
-  const tabs = library ? `<nav class="mobile-categories" aria-label="Library categories">${['Default','nsfw'].map(category => `<button data-action="mobile-category" data-category="${category}" class="${state.mobileCategory === category ? 'active' : ''}" ${state.mobileCategory === category ? 'aria-current="page"' : ''}>${category}</button>`).join('')}</nav>` : '';
+  const tabs = library ? categoryTabs(true) : '';
   const searchBar = search && state.page !== 'Settings' ? `<label class="search mobile-search">${icon('search')}<input id="search" aria-label="Search manga" placeholder="${state.page === 'Browse' ? 'Search source' : 'Search library'}" value="${esc(state.query)}"></label>` : '';
   const source = state.page === 'Browse' ? `<div class="mobile-source"><label>Source <select id="source"><option value="mangadex" ${state.source === 'mangadex' ? 'selected' : ''}>MangaDex</option><option value="komga" ${state.source === 'komga' ? 'selected' : ''}>Komga</option>${typeof extensionOptions === 'function' ? extensionOptions() : ''}</select></label></div>` : '';
   const empty = !shown.length && !state.loading ? `<div class="empty mobile-empty">${icon('book')}<h3>${library ? 'No manga in this category' : 'No titles yet'}</h3><p>${state.query ? 'Try another search.' : library && state.mobileCategory === 'nsfw' ? 'Open a title and choose Move to nsfw.' : 'Browse a source or import your manga.'}</p>${button(library ? 'browse' : 'import',library ? 'Browse manga' : 'Import files','primary')}</div>` : '';
@@ -382,7 +419,7 @@ function showMobileSheet(kind) {
   layer.id = 'mobile-sheet';
   layer.className = 'modal-backdrop mobile-sheet-backdrop';
   const filters = `<h2>Filter and sort</h2><div class="mobile-filter-options">${['All','Reading','Completed','Favorites','Local'].map(tab => button('mobile-filter',tab, state.tab === tab ? 'primary' : 'secondary',`data-tab="${tab}"`)).join('')}</div><label class="mobile-sort-label">Sort titles<select id="sort">${['Recent','Title A–Z','Unread chapters','Recently read'].map(sort => `<option ${state.sort === sort ? 'selected' : ''}>${sort}</option>`).join('')}</select></label>`;
-  const menu = `<h2>Library options</h2>${button('import','Import files')}${button('nav','Downloads','secondary','data-page="Downloads"')}${button('refresh-library','Update library')}${button('nav','Settings','secondary','data-page="Settings"')}`;
+  const menu = `<h2>Library options</h2>${button('mobile-manage-categories','Manage categories')}${button('import','Import files')}${button('nav','Downloads','secondary','data-page="Downloads"')}${button('refresh-library','Update library')}${button('nav','Settings','secondary','data-page="Settings"')}`;
   layer.innerHTML = `<section class="modal mobile-sheet" role="dialog" aria-modal="true" aria-label="${kind === 'filters' ? 'Filter and sort' : 'Library options'}"><span class="sheet-handle"></span>${kind === 'filters' ? filters : menu}${button('mobile-close-sheet','Close','secondary')}</section>`;
   layer.addEventListener('click',event => {
     if (event.target === layer) closeMobileSheet();
@@ -398,6 +435,15 @@ document.addEventListener('click', async event => {
   event.stopImmediatePropagation();
   try {
     if (action === 'mobile-category') { state.mobileCategory = target.dataset.category; render(); }
+    if (action === 'mobile-manage-categories') showCategories();
+    if (action === 'mobile-assign-category') showCategories(target.dataset.id);
+    if (action === 'mobile-edit-category') showCategories(null, target.dataset.name);
+    if (action === 'mobile-category-delete') showCategoryDelete(target.dataset.name);
+    if (action === 'mobile-category-confirm-delete') await changeCategory('delete', target.dataset.name);
+    if (action === 'mobile-category-choose') {
+      applySnapshot(await api('set_book_category', {bookId:target.dataset.id,category:target.dataset.category}));
+      state.detail=bookById(target.dataset.id); closeMobileSheet(); render(); renderDetails();
+    }
     if (action === 'mobile-search') { state.mobileSearch = !state.mobileSearch; if (!state.mobileSearch) state.query = ''; render(); document.querySelector('#search')?.focus(); }
     if (action === 'mobile-filters') showMobileSheet('filters');
     if (action === 'mobile-menu') showMobileSheet('menu');

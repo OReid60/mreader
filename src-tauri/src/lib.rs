@@ -1,3 +1,4 @@
+mod categories;
 mod apk;
 mod cloud;
 mod credentials;
@@ -62,6 +63,7 @@ impl Core {
     fn snapshot(&self) -> Result<Snapshot> {
         Ok(Snapshot {
             books: self.store.books()?,
+            categories: categories::list(&self.store)?,
             progress: self.store.progress()?,
             settings: self.store.settings()?,
             data_dir: self.data.to_string_lossy().into(),
@@ -143,7 +145,7 @@ fn set_book_category(
     book_id: String,
     category: String,
 ) -> Result<Snapshot> {
-    if !matches!(category.as_str(), "Default" | "nsfw") {
+    if !categories::list(&core.store)?.contains(&category) {
         return Err("Unknown library category".into());
     }
     let mut book = core.store.book(&book_id)?;
@@ -151,10 +153,15 @@ fn set_book_category(
     // existing sync protocol and older clients that preserve book tags.
     book.tags
         .retain(|tag| !tag.starts_with("mreader:category:"));
-    if category == "nsfw" {
-        book.tags.push("mreader:category:nsfw".into());
+    if category != "Default" {
+        book.tags.push(format!("mreader:category:{category}"));
     }
     core.store.put(&book)?;
+    core.snapshot()
+}
+#[tauri::command]
+fn edit_category(core: State<Arc<Core>>, action: String, name: String, replacement: Option<String>) -> Result<Snapshot> {
+    categories::edit(&core.store, &action, name.trim(), replacement.as_deref().unwrap_or("").trim())?;
     core.snapshot()
 }
 #[tauri::command]
@@ -1057,6 +1064,7 @@ pub fn run() {
             remove_book,
             favorite,
             set_book_category,
+            edit_category,
             chapters,
             import_files,
             import_paths,

@@ -105,6 +105,7 @@ mod reader_layout_tests {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
+    pub categories: Vec<String>,
     pub books: Vec<Book>,
     pub progress: Vec<Progress>,
     pub settings: Settings,
