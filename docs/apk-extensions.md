@@ -7,9 +7,14 @@ Other repositories can be added with an HTTPS protobuf index URL and a signing
 fingerprint obtained from the repository owner. Repository key changes and APK
 downgrades are rejected. Install only code from repositories you trust.
 
-Install the extension separately on each device. Reading progress and library
-metadata sync through the Mreader account; executable APKs and source credentials
-are device-local. The identity of an APK book is its source ID plus a hash of its
+From 0.3.7, installed source choices and the active Browse source sync through the
+Mreader account. Other signed-in devices prepare their own verified extension copy.
+Package updates and removals also sync; account removals are labeled **Remove
+everywhere**. Website logins and executable caches remain local. Sources waiting
+to prepare appear under **Sources across devices**, with errors and a retry action.
+Library and progress sync continues even if an extension download fails.
+
+The identity of an APK book is its source ID plus a hash of its
 source URL, so Android and desktop do not depend on the compatibility engine's
 local database row numbers. A source is separate from another source offering the
 same title; progress is shared for the same source and manga URL.

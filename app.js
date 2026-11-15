@@ -52,6 +52,9 @@ async function api(name, args = {}) {
       "apk_install",
       "apk_remove",
       "source_prefer",
+      "extension_install",
+      "extension_remove",
+      "extension_example",
     ].includes(name) &&
     typeof queueAccountSync === "function"
   )

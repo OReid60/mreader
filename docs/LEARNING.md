@@ -35,6 +35,10 @@ Never put a Supabase service-role key or account password into frontend code. Pu
 
 ## Check compatibility with evidence
 
+Android's back gesture is a navigation event. `MainActivity.kt` asks `handleAppBack()` in `app.js` to close the current reader, title, or sheet, then restore the previous tab. Only an explicit second back gesture at the library root reaches Android's normal exit behavior. This prevents fullscreen state from deciding whether the app closes.
+
+Source sync separates the desired configuration from installation status. `source_sync.rs` saves source choices even when a device cannot download a package yet. That keeps one device's temporary failure from deleting a source on the others. Each package has its own timestamp; deletion records stop an older device from restoring a removed source. The APK signature and repository key are checked before a synced source is prepared.
+
 Continuous manga reading demonstrates the difference between a library of pages and the images currently in memory. `mountReaderStrip()` in `mobile.js` creates chapter sections, fetches nearby pages through the Rust API, and releases old blob URLs as they move away. An `IntersectionObserver` triggers loading, while the visible page determines saved progress. Prefetching a page must not mark it as read. Scroll anchors preserve your place when an image's real dimensions arrive or the controls appear. `npm run test:reader` checks these behaviors with actual decoded fixture images on phone and tablet viewports.
 
 Fullscreen reading crosses two UI layers. CSS controls the page inside the WebView: the reader must sit above the bottom navigation, and hidden toolbars must stop consuming space. Android's status and gesture bars belong to the native window, so CSS cannot hide them. `MainActivity.kt` uses `WindowInsetsControllerCompat` through a small JavaScript bridge to hide those bars and restore them on exit. The bridge accepts calls only while the WebView is on the app's local origin. See [Android's immersive-mode guidance](https://developer.android.com/develop/ui/views/layout/immersive).

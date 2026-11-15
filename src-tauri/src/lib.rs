@@ -874,6 +874,9 @@ async fn extension_remove(
 ) -> Result<Vec<extensions::Extension>> {
     let _guard = core.cloud.gate.lock().await;
     core.sources.extensions.remove(&id)?;
+    if source_sync::preferred(&source_sync::load(&core.store)?).as_deref()==Some(format!("ext:{id}").as_str()) {
+        source_sync::put(&core.store,"preferred",source_sync::Choice::Preferred("mangadex".into()),now_ms())?;
+    }
     core.store.mark("deleted", &format!("extension:{id}"))?;
     core.manifests.lock().map_err(|e| e.to_string())?.clear();
     core.sources.extensions.list()
