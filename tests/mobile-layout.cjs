@@ -150,6 +150,32 @@ const { pathToFileURL } = require('node:url');
       if(!handleAppBack()||state.mobileSearch||state.query)throw Error('Back must dismiss search');
       if(!handleAppBack()||handleAppBack()!==false)throw Error('Accidental root back must not close the app');
     });
+    await desktop.evaluate(()=>{
+      state.page='Library';state.mobileCategory='Default';state.query='';state.tab='All';
+      const books=state.books;
+      books[4].tags.push('mreader:category:nsfw');
+      state.progress=[
+        {bookId:books[0].id,chapterId:books[0].chapters[0].id,page:2,completed:false,updated:90},
+        {bookId:books[0].id,chapterId:books[0].chapters[1].id,page:1,completed:false,updated:100},
+        {bookId:books[1].id,chapterId:books[1].chapters[0].id,page:2,completed:true,updated:80},
+        {bookId:books[2].id,chapterId:books[2].chapters.at(-1).id,page:2,completed:true,updated:70},
+        {bookId:books[3].id,chapterId:'removed-chapter',page:1,completed:false,updated:200},
+        {bookId:books[3].id,chapterId:books[3].chapters[0].id,page:1,completed:false,updated:60},
+        {bookId:books[4].id,chapterId:books[4].chapters[0].id,page:1,completed:false,updated:110}
+      ];indexProgress();render();
+    });
+    assert.equal(await desktop.locator('.continue-card').count(),3);
+    assert.deepEqual(await desktop.locator('.continue-card h3').allTextContents(),['Library title 1','Library title 2','Library title 4']);
+    assert((await desktop.locator('.continue-reading').boundingBox()).y>=(await desktop.locator('.main>.grid').boundingBox()).y+(await desktop.locator('.main>.grid').boundingBox()).height);
+    assert.equal(await desktop.getByRole('button',{name:'Browse manga',exact:true}).count(),0);
+    assert(await desktop.locator('.continue-card').nth(1).textContent().then(s=>s.includes('Next: Chapter 2')));
+    await desktop.locator('.continue-reading').scrollIntoViewIfNeeded();
+    await desktop.screenshot({path:path.join(output,'desktop-continue-reading.png')});
+    await desktop.getByRole('button',{name:'Continue reading Library title 1',exact:true}).click();
+    await desktop.waitForFunction(()=>state.reader?.chapter.id==='c:0:1'&&state.reader.page===1);
+    await desktop.evaluate(async()=>{closeReader();applySnapshot(await api('snapshot'));render();});
+    assert.equal(await desktop.locator('.continue-card').count(),0);
+    await desktop.evaluate(()=>scrollTo(0,0));
     assert.equal(await desktop.locator('.breadcrumb').count(),0);
     assert.equal(await desktop.locator('.topbar .engine-status').count(),0);
     assert.equal(await desktop.locator('.sidebar [data-action="import"]').count(),1);
