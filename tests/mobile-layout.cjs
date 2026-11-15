@@ -153,6 +153,8 @@ const { pathToFileURL } = require('node:url');
     assert.equal(await desktop.locator('.breadcrumb').count(),0);
     assert.equal(await desktop.locator('.topbar .engine-status').count(),0);
     assert.equal(await desktop.locator('.sidebar [data-action="import"]').count(),1);
+    assert.equal(await desktop.locator('.heading [data-action="import"]').count(),0);
+    assert(await desktop.locator('.sidebar-account').evaluate(el=>el.getBoundingClientRect().bottom<=innerHeight));
     await desktop.getByRole('button',{name:'Collapse sidebar',exact:true}).click();
     assert.equal(await desktop.locator('.sidebar').evaluate(el=>Math.round(el.getBoundingClientRect().width)),76);
     assert.equal(await desktop.locator('.main').evaluate(el=>Math.round(el.getBoundingClientRect().left)),76);
