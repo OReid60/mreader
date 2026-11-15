@@ -123,7 +123,7 @@ vm.runInContext(fs.readFileSync("app.js", "utf8"), context);
   );
   vm.runInContext("closeReader()", context);
   assert.equal(vm.runInContext("pageCache.size", context), 0);
-  vm.runInContext("state.page='Browse';state.query='old'", context);
+  vm.runInContext("state.settings.komgaUrl='https://fixture.test';state.source='komga';state.page='Browse';state.query='old'", context);
   const old = vm.runInContext("searchSource()", context);
   vm.runInContext("state.query='new'", context);
   const recent = vm.runInContext("searchSource()", context);

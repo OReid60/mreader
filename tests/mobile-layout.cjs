@@ -13,7 +13,7 @@ const { pathToFileURL } = require('node:url');
     const page = await browser.newPage({ viewport: { width, height: 780 }, ...(android ? { userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36' } : {}) });
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(() => {
-      const settings = { theme:'dark',language:'en',direction:'ltr',fit:'width',dataSaver:false,komgaUrl:'',komgaUser:'' };
+      const settings = { theme:'dark',language:'en',direction:'ltr',fit:'width',dataSaver:false,komgaUrl:'',komgaUser:'',...JSON.parse(sessionStorage.getItem('fixtureSettings')||'{}') };
       const books = [95,35,347,103,4,7].map((count,index) => ({ id:`test:${index}`, title:`Library title ${index + 1}`,source:'local',author:'Layout fixture',description:'Synthetic test fixture',tags:['Action'],favorite:false,status:'Local',path:'fixture.cbz',chapters:Array.from({length:count},(_,n)=>({id:`c:${index}:${n}`,number:String(n+1),title:'Chapter',pages:3,downloaded:false,path:''})) }));
       let categories=['Default','nsfw'];
       const snapshot = () => structuredClone({ books,progress:[],settings,categories,dataDir:'Layout test' });
@@ -22,6 +22,7 @@ const { pathToFileURL } = require('node:url');
       window.__TAURI__ = {
         core: { invoke: async (name,args) => {
           if (name === 'snapshot') return snapshot();
+          if (name === 'save_settings') {Object.assign(settings,args.settings);sessionStorage.setItem('fixtureSettings',JSON.stringify(settings));return snapshot();}
           if (name === 'extension_list') return [];
           if (name === 'apk_state') return structuredClone(apk);
           if (name === 'apk_install') {apk.installed=[{extension,repository:apk.repositories[0].url}];return structuredClone(apk);}
@@ -149,12 +150,32 @@ const { pathToFileURL } = require('node:url');
       if(!handleAppBack()||state.mobileSearch||state.query)throw Error('Back must dismiss search');
       if(!handleAppBack()||handleAppBack()!==false)throw Error('Accidental root back must not close the app');
     });
+    assert.equal(await desktop.locator('.breadcrumb').count(),0);
+    assert.equal(await desktop.locator('.topbar .engine-status').count(),0);
+    assert.equal(await desktop.locator('.sidebar [data-action="import"]').count(),1);
+    await desktop.getByRole('button',{name:'Collapse sidebar',exact:true}).click();
+    assert.equal(await desktop.locator('.sidebar').evaluate(el=>Math.round(el.getBoundingClientRect().width)),76);
+    assert.equal(await desktop.locator('.main').evaluate(el=>Math.round(el.getBoundingClientRect().left)),76);
+    await desktop.getByRole('button',{name:'Expand sidebar',exact:true}).click();
+    assert.equal(await desktop.locator('.sidebar').evaluate(el=>Math.round(el.getBoundingClientRect().width)),228);
     await desktop.getByRole('button',{name:'Manage categories',exact:true}).click();
     await desktop.locator('#category-name').fill('Desktop group');
     await desktop.getByRole('button',{name:'Create category',exact:true}).click();
     await desktop.waitForFunction(()=>state.categories.includes('Desktop group'));
     await desktop.locator('[data-action="mobile-close-sheet"]').click();
     assert.equal(await desktop.locator('.category-tabs [data-category="Desktop group"]').count(),1);
+    await desktop.evaluate(()=>navigate('Settings'));
+    assert.equal(await desktop.locator('[data-action="apk-keiyoushi"]').count(),0);
+    assert.equal(await desktop.locator('[data-action="extension-example"]').count(),0);
+    await desktop.getByRole('combobox',{name:'Startup page',exact:true}).selectOption('History');
+    await desktop.locator('#settings-form button[type="submit"],#settings-form button').last().click();
+    await desktop.waitForFunction(()=>state.settings.startPage==='History');
+    for(const startPage of ['Library','Updates','History','Browse','Downloads']){
+      await desktop.evaluate(async startPage=>{await api('save_settings',{settings:{...state.settings,startPage}});},startPage);
+      await desktop.reload();
+      await desktop.waitForFunction(startPage=>state.dataDir&&state.page===startPage,startPage);
+      if(startPage==='Browse'){assert.equal(await desktop.locator('#source option[value="mangadex"]').count(),0);assert.equal(await desktop.locator('#source option[value="komga"]').count(),0);assert(await desktop.getByRole('button',{name:'Add sources in Settings',exact:true}).isVisible());}
+    }
     for(const tab of ['Library','Updates','History','Browse','Downloads','Settings']){
       await desktop.evaluate(tab=>navigate(tab),tab);
       assert((await desktop.locator('.main').boundingBox()).y<2,`${tab} must start at the top`);
@@ -168,6 +189,7 @@ const { pathToFileURL } = require('node:url');
       assert.equal(await device.locator('#source option[value="apk:1998944621602463790"]').count(),1);
     }
     await desktop.screenshot({path:path.join(output,'desktop-browse-synced.png')});
+    await phone.evaluate(()=>{state.settings.komgaUrl='https://fixture.test';render();});
     await phone.locator('#source').selectOption('komga');
     await phone.waitForFunction(()=>window.chosenSource==='komga'&&state.source==='komga');
     await phone.evaluate(async()=>{window.failSourceSync=true;await syncAccount();await navigate('Settings');});

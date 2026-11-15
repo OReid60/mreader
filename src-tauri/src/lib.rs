@@ -545,6 +545,7 @@ fn save_progress(
 }
 #[tauri::command]
 fn save_settings(core: State<Arc<Core>>, mut settings: Settings) -> Result<Snapshot> {
+    if !matches!(settings.start_page.as_str(), "Library" | "Updates" | "History" | "Browse" | "Downloads") { return Err("Unsupported startup page".into()); }
     if !matches!(settings.reader_layout.as_str(), "paged" | "continuous") {
         return Err("Unsupported reader layout".into());
     }

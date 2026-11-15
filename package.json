@@ -1,6 +1,6 @@
 {
   "name": "mreader",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "private": true,
   "description": "Rust-powered desktop manga reader",
   "scripts": {
