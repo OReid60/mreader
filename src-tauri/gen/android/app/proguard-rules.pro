@@ -41,3 +41,5 @@
 }
 -keep class app.mreader.desktop.DownloadService { *; }
 -keep class app.mreader.desktop.DownloadService$Companion { *; }
+# The signed on-device test runner calls this API in the target application.
+-keep class androidx.tracing.** { *; }

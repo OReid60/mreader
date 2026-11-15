@@ -37,6 +37,7 @@ class BackgroundDownloadTest {
   instrumentation.uiAutomation.executeShellCommand("input keyevent 223").close()
   try{
    Thread.sleep(1500);assertFalse("Phone screen must be off",power.isInteractive)
+   assertTrue("Chapter completed before the screen-off observation; choose another chapter",before.optInt("done",0)==job()?.optInt("done",0))
    var completed=false
    for(i in 0 until 180){val current=job();if(current!=null&&current.getJSONArray("failed").length()>0)error(current.getJSONArray("failed").toString());if((current?.optInt("done",0)?:0)>before.optInt("done",0)){completed=true;break};Thread.sleep(1000)}
    assertTrue("Native download did not finish while the screen was off",completed)
