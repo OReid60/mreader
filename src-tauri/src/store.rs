@@ -29,6 +29,7 @@ impl Store {
         let db = Connection::open(path).map_err(|e| e.to_string())?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; CREATE TABLE IF NOT EXISTS books(id TEXT PRIMARY KEY, data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS progress(book TEXT NOT NULL,chapter TEXT NOT NULL,page INTEGER NOT NULL,completed INTEGER NOT NULL,updated INTEGER NOT NULL,PRIMARY KEY(book,chapter)); CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY,data TEXT NOT NULL);").map_err(|e|e.to_string())?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS sync_meta(kind TEXT NOT NULL,key TEXT NOT NULL,updated INTEGER NOT NULL,PRIMARY KEY(kind,key));").map_err(|e|e.to_string())?;
+        db.execute_batch("CREATE TABLE IF NOT EXISTS source_choices(id TEXT PRIMARY KEY,data TEXT NOT NULL,updated INTEGER NOT NULL);").map_err(|e|e.to_string())?;
         Ok(Self(Mutex::new(db)))
     }
     pub fn books(&self) -> Result<Vec<Book>> {
@@ -43,6 +44,73 @@ impl Store {
             serde_json::from_str(&r.map_err(|e| e.to_string())?).map_err(|e| e.to_string())
         })
         .collect()
+    }
+    pub fn source_values(
+        &self,
+    ) -> Result<std::collections::BTreeMap<String, (serde_json::Value, i64)>> {
+        let db = self.0.lock().map_err(|e| e.to_string())?;
+        let mut q = db
+            .prepare("SELECT id,data,updated FROM source_choices")
+            .map_err(|e| e.to_string())?;
+        let rows = q
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.map(|row| {
+            let (id, data, stamp) = row.map_err(|e| e.to_string())?;
+            Ok((
+                id,
+                (
+                    serde_json::from_str(&data).map_err(|e| e.to_string())?,
+                    stamp,
+                ),
+            ))
+        })
+        .collect()
+    }
+    pub fn put_source_value(&self, id: &str, value: &serde_json::Value, stamp: i64) -> Result<()> {
+        self.0.lock().map_err(|e|e.to_string())?.execute("INSERT INTO source_choices VALUES(?1,?2,?3) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated=excluded.updated WHERE excluded.updated>=source_choices.updated",params![id,value.to_string(),stamp]).map_err(|e|e.to_string())?;
+        Ok(())
+    }
+    pub fn remove_source_value(&self, id: &str) -> Result<()> {
+        self.0
+            .lock()
+            .map_err(|e| e.to_string())?
+            .execute("DELETE FROM source_choices WHERE id=?1", [id])
+            .map_err(|e| e.to_string())?;
+        self.mark("deleted", &format!("source:{id}"))
+    }
+    pub fn apply_source_values(
+        &self,
+        values: &std::collections::BTreeMap<String, (serde_json::Value, i64)>,
+        deletions: &std::collections::BTreeMap<String, i64>,
+    ) -> Result<()> {
+        let mut db = self.0.lock().map_err(|e| e.to_string())?;
+        let tx = db.transaction().map_err(|e| e.to_string())?;
+        for (id, (value, stamp)) in values {
+            if deletions
+                .get(&format!("source:{id}"))
+                .is_some_and(|t| t >= stamp)
+            {
+                continue;
+            }
+            tx.execute("INSERT INTO source_choices VALUES(?1,?2,?3) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated=excluded.updated WHERE excluded.updated>=source_choices.updated",params![id,value.to_string(),stamp]).map_err(|e|e.to_string())?;
+        }
+        for (key, stamp) in deletions {
+            if let Some(id) = key.strip_prefix("source:") {
+                tx.execute(
+                    "DELETE FROM source_choices WHERE id=?1 AND updated<=?2",
+                    params![id, stamp],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())
     }
     pub fn book(&self, id: &str) -> Result<Book> {
         let db = self.0.lock().map_err(|e| e.to_string())?;

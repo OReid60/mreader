@@ -8,6 +8,8 @@ const featureState = {
   syncing: false,
   syncError: "",
   syncTimer: null,
+  syncedSources: [],
+  sourceSyncErrors: [],
   plan: null,
 };
 function sourceLabel(id) {
@@ -20,7 +22,9 @@ function sourceLabel(id) {
   return { local: "Local", mangadex: "MangaDex", komga: "Komga" }[id] || id;
 }
 function extensionOptions() {
-  return featureState.apk.installed.flatMap(e => e.extension.sources).map(s => `<option value="apk:${esc(s.id)}" ${state.source==="apk:"+s.id?"selected":""}>${esc(s.name)} · ${esc(s.language)} (APK)</option>`).join("") + featureState.extensions
+  const ids=featureState.apk.installed.flatMap(e=>e.extension.sources.map(s=>'apk:'+s.id)).concat(featureState.extensions.map(e=>'ext:'+e.id));
+  const pending=(state.source.startsWith('apk:')||state.source.startsWith('ext:'))&&!ids.includes(state.source)?`<option value="${esc(state.source)}" selected disabled>Synced source · waiting to prepare</option>`:'';
+  return pending + featureState.apk.installed.flatMap(e => e.extension.sources).map(s => `<option value="apk:${esc(s.id)}" ${state.source==="apk:"+s.id?"selected":""}>${esc(s.name)} · ${esc(s.language)} (APK)</option>`).join("") + featureState.extensions
     .map(
       (e) =>
         `<option value="ext:${esc(e.id)}" ${state.source === "ext:" + e.id ? "selected" : ""}>${esc(e.name)} · ${esc(e.language)}</option>`,
@@ -28,7 +32,7 @@ function extensionOptions() {
     .join("");
 }
 function extensionView() {
-  return apkView() + `<section class="feature-panel"><div class="feature-heading"><div><h2>Native source extensions</h2><p>Portable JSON manifests. Install the same extension on desktop, phone, and tablet builds.</p></div><div class="button-row"><label class="secondary">Import manifest<input type="file" id="extension-file" accept=".json" hidden></label>${button("extension-example", "Install MangaDex example")}</div></div>${featureState.extensions.length ? featureState.extensions.map((e) => `<div class="extension-row"><div><b>${esc(e.name)}</b><small>${esc(e.id)} · v${esc(e.version)} · schema ${e.schemaVersion}</small><p>Network access: ${e.allowedHosts.map(esc).join(", ")}</p></div><div class="button-row">${button("extension-export", "Export", "secondary", `data-extension="${esc(e.id)}"`)}${button("extension-remove", "Uninstall", "secondary", `data-extension="${esc(e.id)}"`)}</div></div>`).join("") : '<p class="sub">No native extensions installed. Built-in sources remain available.</p>'}<p class="feature-note">Schema v1 supports JSON API sources. Use the APK extension catalog above for Keiyoushi extensions. Updating a manifest keeps its source and chapter IDs.</p></section>`;
+  return sourceSyncView() + apkView() + `<section class="feature-panel"><div class="feature-heading"><div><h2>Native source extensions</h2><p>Portable JSON manifests. Install the same extension on desktop, phone, and tablet builds.</p></div><div class="button-row"><label class="secondary">Import manifest<input type="file" id="extension-file" accept=".json" hidden></label>${button("extension-example", "Install MangaDex example")}</div></div>${featureState.extensions.length ? featureState.extensions.map((e) => `<div class="extension-row"><div><b>${esc(e.name)}</b><small>${esc(e.id)} · v${esc(e.version)} · schema ${e.schemaVersion}</small><p>Network access: ${e.allowedHosts.map(esc).join(", ")}</p></div><div class="button-row">${button("extension-export", "Export", "secondary", `data-extension="${esc(e.id)}"`)}${button("extension-remove", "Uninstall", "secondary", `data-extension="${esc(e.id)}"`)}</div></div>`).join("") : '<p class="sub">No native extensions installed. Built-in sources remain available.</p>'}<p class="feature-note">Schema v1 supports JSON API sources. Use the APK extension catalog above for Keiyoushi extensions. Updating a manifest keeps its source and chapter IDs.</p></section>`;
 }
 function accountView() {
   const c = featureState.cloud;
@@ -40,12 +44,19 @@ function apkView() {
   const filtered=entries.filter(({extension:e}) => q ? `${e.name} ${e.package} ${e.sources.map(s=>s.name+" "+s.language).join(" ")}`.toLowerCase().includes(q) : e.sources.some(s=>s.language==="en"));
   const installed=p=>a.installed.find(e=>e.extension.package===p);
   filtered.sort((a,b)=>Number(!!installed(b.extension.package))-Number(!!installed(a.extension.package)) || a.extension.name.localeCompare(b.extension.name));
-  return `<section class="feature-panel"><div class="feature-heading"><div><h2>APK source extensions</h2><p>Install Keiyoushi extensions on this device. Your library and progress use the same source IDs on desktop and Android.</p></div>${button("apk-keiyoushi",a.repositories.length?"Refresh Keiyoushi":"Add Keiyoushi","secondary",featureState.apkBusy?"disabled":"")}</div><p class="feature-note">Extensions run third-party code. Install only from repositories you trust. Android runs APKs directly; desktop downloads a local compatibility runtime on first install (about 344 MB). No account hosting is required for extensions.</p><details><summary>Add another repository</summary><form id="apk-repository-form" class="account-form"><input name="url" type="url" required placeholder="HTTPS index.pb URL" aria-label="Extension repository URL"><input name="fingerprint" pattern="[a-fA-F0-9]{64}" placeholder="Trusted signing fingerprint (64 hex characters)" aria-label="Repository signing fingerprint"><button class="secondary" ${featureState.apkBusy?"disabled":""}>Add repository</button></form></details>${featureState.apkBusy?'<p role="status"><span class="spinner"></span> Preparing extension… First desktop install downloads the runtime.</p>':""}${featureState.apkError?`<p class="notice" role="alert">${esc(featureState.apkError)}</p>`:""}${entries.length?`<label class="apk-search-label">Find an extension<input id="apk-search" type="search" value="${esc(featureState.apkQuery)}" placeholder="Source name or language (default: English)"></label><p class="sub">${filtered.length} matching packages · ${a.installed.length} installed on this device</p>${filtered.slice(0,60).map(({extension:e,repository})=>{const old=installed(e.package),up=old&&old.extension.versionCode<e.versionCode;return `<div class="extension-row"><div><b>${esc(e.name)}</b><small>${esc(e.version)} · API ${esc(e.api)} · ${[...new Set(e.sources.map(s=>s.language))].map(esc).join(", ")}${e.contentWarning>=2?" · Mature content":""}</small><small>${esc(e.package)}</small></div><div class="button-row">${!old||up?button("apk-install",up?"Update":"Install","secondary",`data-package="${esc(e.package)}" data-repository="${esc(repository)}" ${featureState.apkBusy?"disabled":""}`):'<span class="connection-pill">Installed</span>'}${old?button("apk-remove","Uninstall","secondary",`data-package="${esc(e.package)}" ${featureState.apkBusy?"disabled":""}`):""}</div></div>`}).join("")}${filtered.length>60?'<p class="sub">Showing 60 results. Search to narrow the list.</p>':""}`:'<p class="sub">Add a repository to browse installable sources.</p>'}<p class="feature-note">Install extensions separately on each device. Uninstalling preserves your library and progress. A source may require its own website account or verification; installing an extension does not grant access.</p></section>`;
+  return `<section class="feature-panel"><div class="feature-heading"><div><h2>APK source extensions</h2><p>Install Keiyoushi extensions on this device. Your library and progress use the same source IDs on desktop and Android.</p></div>${button("apk-keiyoushi",a.repositories.length?"Refresh Keiyoushi":"Add Keiyoushi","secondary",featureState.apkBusy?"disabled":"")}</div><p class="feature-note">Extensions run third-party code. Install only from repositories you trust. Android runs APKs directly; desktop downloads a local compatibility runtime on first install (about 344 MB). No account hosting is required for extensions.</p><details><summary>Add another repository</summary><form id="apk-repository-form" class="account-form"><input name="url" type="url" required placeholder="HTTPS index.pb URL" aria-label="Extension repository URL"><input name="fingerprint" pattern="[a-fA-F0-9]{64}" placeholder="Trusted signing fingerprint (64 hex characters)" aria-label="Repository signing fingerprint"><button class="secondary" ${featureState.apkBusy?"disabled":""}>Add repository</button></form></details>${featureState.apkBusy?'<p role="status"><span class="spinner"></span> Preparing extension… First desktop install downloads the runtime.</p>':""}${featureState.apkError?`<p class="notice" role="alert">${esc(featureState.apkError)}</p>`:""}${entries.length?`<label class="apk-search-label">Find an extension<input id="apk-search" type="search" value="${esc(featureState.apkQuery)}" placeholder="Source name or language (default: English)"></label><p class="sub">${filtered.length} matching packages · ${a.installed.length} installed on this device</p>${filtered.slice(0,60).map(({extension:e,repository})=>{const old=installed(e.package),up=old&&old.extension.versionCode<e.versionCode;return `<div class="extension-row"><div><b>${esc(e.name)}</b><small>${esc(e.version)} · API ${esc(e.api)} · ${[...new Set(e.sources.map(s=>s.language))].map(esc).join(", ")}${e.contentWarning>=2?" · Mature content":""}</small><small>${esc(e.package)}</small></div><div class="button-row">${!old||up?button("apk-install",up?"Update":"Install","secondary",`data-package="${esc(e.package)}" data-repository="${esc(repository)}" ${featureState.apkBusy?"disabled":""}`):'<span class="connection-pill">Installed</span>'}${old?button("apk-remove",featureState.cloud.signedIn?"Remove everywhere":"Uninstall","secondary",`data-package="${esc(e.package)}" ${featureState.apkBusy?"disabled":""}`):""}</div></div>`}).join("")}${filtered.length>60?'<p class="sub">Showing 60 results. Search to narrow the list.</p>':""}`:'<p class="sub">Add a repository to browse installable sources.</p>'}<p class="feature-note">Installed source choices sync with your account; each device prepares its own copy. Uninstalling preserves your library and progress. A source may require its own website account or verification; installing an extension does not grant access.</p></section>`;
 }
 async function apkAction(command,args) {
   if(featureState.apkBusy)return;
   featureState.apkBusy=true;featureState.apkError="";render();
-  try {featureState.apk=await api(command,args);releaseCoverCache();toast("Extension list updated");}
+  try {
+    featureState.apk=await api(command,args);
+    const local=await api('cloud_status');
+    if(Array.isArray(local.sourceChoices))featureState.syncedSources=local.sourceChoices;
+    if(local.preferredSource)state.source=local.preferredSource;
+    featureState.sourceSyncErrors=[];
+    releaseCoverCache();toast("Extension list updated");
+  }
   catch(e){featureState.apkError=String(e);}
   finally {featureState.apkBusy=false;render();}
 }
@@ -81,6 +92,8 @@ async function loadFeatures() {
   featureState.extensions = extensions;
   featureState.apk = apk;
   featureState.cloud = cloud;
+  if(cloud.preferredSource)state.source=cloud.preferredSource;
+  featureState.syncedSources=cloud.sourceChoices||[];
   featureState.plan = plan;
   if (cloud.signedIn && !plan.enabled) await syncAccount(true);
   if (!plan.enabled) {
@@ -98,24 +111,38 @@ function queueAccountSync() {
 async function syncAccount(quiet = false) {
   if (featureState.syncing || state.busy) return;
   featureState.syncing = true;
+  if(state.page==='Settings'&&!state.reader&&!document.activeElement?.matches('input,textarea,select'))render();
   try {
     const result = await api("cloud_sync");
     applySnapshot(result.snapshot);
     featureState.cloud = result.status;
     featureState.extensions = result.extensions;
+    if(result.apk)featureState.apk=result.apk;
+    featureState.syncedSources=result.sourceChoices||[];
+    featureState.sourceSyncErrors=result.sourceSyncErrors||[];
+    if(result.sourceChoicesChanged)queueAccountSync();
+    const changed=result.preferredSource && result.preferredSource!==state.source;
+    if(changed){state.source=result.preferredSource;state.catalog=[];state.total=0;searchVersion++;}
     featureState.syncError = "";
     if (
       !state.reader &&
       !document.activeElement?.matches("input,textarea,select")
     )
       render();
+    if(changed && state.page==='Browse' && !state.reader)await searchSource();
     if (!quiet) toast("Account library and progress synced");
   } catch (e) {
     featureState.syncError = String(e);
     if (!quiet) toast(e);
   } finally {
     featureState.syncing = false;
+    if(state.page==='Settings'&&!state.reader&&!document.activeElement?.matches('input,textarea,select'))render();
   }
+}
+function sourceSyncView() {
+  if(!featureState.cloud.signedIn)return '';
+  const pending=featureState.syncedSources.filter(e=>e.kind==='apk').map(e=>e.value).filter(e=>!featureState.apk.installed.some(old=>old.extension.package===e.package));
+  return `<section class="feature-panel"><div class="feature-heading"><div><h2>Sources across devices</h2><p>Your installed source choices and active Browse source sync with this account. Website logins stay on each device.</p></div>${button('cloud-sync',featureState.syncing?'Syncing sources…':pending.length?'Retry source sync':'Sync sources','secondary',featureState.syncing?'disabled':'')}</div>${pending.map(e=>`<div class="extension-row"><div><b>${esc(e.name)}</b><small>Waiting to prepare on this device</small></div>${button('apk-remove','Remove from synced sources','secondary',`data-package="${esc(e.package)}"`)}</div>`).join('')}${featureState.sourceSyncErrors.map(error=>`<p class="notice" role="alert">${esc(error)}</p>`).join('')}</section>`;
 }
 async function refreshExtensions(list) {
   featureState.extensions = list;

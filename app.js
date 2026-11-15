@@ -49,6 +49,9 @@ async function api(name, args = {}) {
       "import_paths",
       "import_files",
       "chapters",
+      "apk_install",
+      "apk_remove",
+      "source_prefer",
     ].includes(name) &&
     typeof queueAccountSync === "function"
   )
@@ -96,6 +99,8 @@ let searchTimer,
   searchVersion = 0,
   readerVersion = 0,
   toastTimer;
+const navigationHistory = [];
+let lastRootBack = 0;
 const button = (action, label, cls = "secondary", attrs = "") =>
   `<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`;
 function toast(message) {
@@ -214,7 +219,8 @@ function render() {
   }
   document.body.classList.toggle("mobile-layout", false);
   document.querySelector("#app").innerHTML =
-    `<div class="shell"><aside class="sidebar"><div class="brand">${icon("book")}<span>mreader<small>YOUR NEXT CHAPTER</small></span></div><nav class="nav">${["Library", "Updates", "History", "Browse", "Downloads"].map((p) => `<button data-action="nav" data-page="${p}" class="${state.page === p ? "active" : ""}">${icon(p.toLowerCase())}<span>${p}</span>${p === "Updates" && count ? `<span class="count">${count}</span>` : ""}</button>`).join("")}</nav><div class="side-label">YOUR COLLECTIONS</div>${["Favorites", "Reading", "Completed", "Local"].map((c, i) => `<button class="collection" data-action="collection" data-tab="${c}"><i class="dot" style="background:${["#c7b2ec", "#8aaf9c", "#c6a87d", "#88a5c7"][i]}"></i>${c}</button>`).join("")}<div class="side-bottom"><nav class="nav"><button data-action="nav" data-page="Settings" class="${state.page === "Settings" ? "active" : ""}">${icon("settings")}<span>Settings</span></button></nav><div class="storage"><b>Your stories. Your space.</b>${state.books.length} titles · ${state.books.filter((b) => b.source === "local").length} local<div class="storage-bar"><i></i></div>Rust core</div></div></aside><main class="main"><header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <b>${state.page}</b></div><div class="top-right"><span class="engine-status"><i class="status-dot"></i>${native ? "Rust engine connected" : "Desktop app required"}</span><div class="avatar">ME</div></div></header>${state.page === "Settings" ? settingsView() : `<div class="heading"><div><div class="eyebrow">YOUR PERSONAL MANGA SPACE</div><h1>${state.page === "Library" ? "My library" : state.page === "Browse" ? "Discover your next story" : state.page}</h1><p class="sub">${{ Library: "All your stories. Right where you left them.", Browse: "Real stories from MangaDex and your Komga server.", History: "Every story you’ve spent a little time with.", Downloads: "Chapters saved on this computer, ready to read offline.", Updates: "Unread chapters from your online collection." }[state.page]}</p></div><div class="button-row">${button("import", icon("plus") + " Import files")}${button(state.page === "Browse" ? "refresh-source" : state.page === "Updates" ? "refresh-library" : "browse", icon(state.page === "Updates" ? "updates" : "browse") + (state.page === "Browse" ? " Refresh" : state.page === "Updates" ? " Check updates" : " Browse manga"), "primary")}</div></div>${state.page === "Library" ? hero() : ""}${state.page === "Browse" ? `<div class="source-row"><label>Source <select id="source"><option value="mangadex" ${state.source === "mangadex" ? "selected" : ""}>MangaDex</option><option value="komga" ${state.source === "komga" ? "selected" : ""}>Komga · personal server</option>${typeof extensionOptions === "function" ? extensionOptions() : ""}</select></label><span>${esc(state.settings.language.toUpperCase())} chapters · ${state.total.toLocaleString()} titles</span></div>` : ""}<div class="tabs-row">${["All", "Reading", "Completed", "Favorites", "Local"].map((t) => `<button class="tab ${state.tab === t ? "active" : ""}" data-action="tab" data-tab="${t}">${t}${t === "All" ? `<span>${state.page === "Browse" ? state.catalog.length : state.books.length}</span>` : ""}</button>`).join("")}</div><div class="tools"><label class="search">${icon("search")}<input id="search" aria-label="Search manga" placeholder="${state.page === "Browse" ? "Search source…" : "Search your library…"}" value="${esc(state.query)}"></label><div class="toolbar-right"><span class="result-count">${data.length} titles</span><select id="sort" aria-label="Sort titles">${["Recent", "Title A–Z", "Unread chapters", "Recently read"].map((s) => `<option ${state.sort === s ? "selected" : ""}>${s}</option>`).join("")}</select><div class="view-switch">${button("grid", icon("grid"), !state.list ? "active" : "", 'aria-label="Grid view"')}${button("list", icon("list"), state.list ? "active" : "", 'aria-label="List view"')}</div></div></div>${state.error ? `<div class="error-box" role="alert">${esc(state.error)} ${button(state.page === "Browse" ? "refresh-source" : "reload", "Retry")}</div>` : ""}<div class="grid ${state.list ? "list" : ""}">${data.map(card).join("")}${state.loading ? '<div class="empty"><span class="spinner"></span> Connecting to source…</div>' : !data.length ? `<div class="empty">${icon("book")}<h3>${state.page === "Library" ? "Your library is a blank page." : "No titles here yet."}</h3><p>${state.query ? "Try another search." : state.page === "Browse" ? "Choose a source and search for a title." : "Browse manga or import CBZ, CBR, PDF, and image folders."}</p>${button("browse", "Discover manga", "primary")} ${button("import-folder", "Import folder")}</div>` : ""}</div>${state.page === "Browse" && state.catalog.length < state.total && !state.loading ? `<div class="load-more">${button("load-more", "Load more titles")}</div>` : ""}<footer class="footer"><span>${state.page === "Browse" ? "Connected to " + (typeof sourceLabel === "function" ? esc(sourceLabel(state.source)) : state.source) : state.books.length + " stories. Countless worlds to get lost in."}</span><span>Local-first storage · Rust + WebView2</span></footer>`}</main></div>`;
+    `<div class="shell"><aside class="sidebar"><div class="brand">${icon("book")}<span>mreader<small>YOUR NEXT CHAPTER</small></span></div><nav class="nav">${["Library", "Updates", "History", "Browse", "Downloads"].map((p) => `<button data-action="nav" data-page="${p}" class="${state.page === p ? "active" : ""}">${icon(p.toLowerCase())}<span>${p}</span>${p === "Updates" && count ? `<span class="count">${count}</span>` : ""}</button>`).join("")}</nav><div class="side-label">YOUR COLLECTIONS</div>${["Favorites", "Reading", "Completed", "Local"].map((c, i) => `<button class="collection" data-action="collection" data-tab="${c}"><i class="dot" style="background:${["#c7b2ec", "#8aaf9c", "#c6a87d", "#88a5c7"][i]}"></i>${c}</button>`).join("")}<div class="side-bottom"><nav class="nav"><button data-action="nav" data-page="Settings" class="${state.page === "Settings" ? "active" : ""}">${icon("settings")}<span>Settings</span></button></nav><div class="storage"><b>Your stories. Your space.</b>${state.books.length} titles · ${state.books.filter((b) => b.source === "local").length} local<div class="storage-bar"><i></i></div>Rust core</div></div></aside><main class="main"><header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <b>${state.page}</b></div><div class="top-right"><span class="engine-status"><i class="status-dot"></i>${native ? (typeof featureState !== "undefined" && featureState.cloud.signedIn ? "Signed in" : "Local library") : "Desktop app required"}</span><div class="avatar">ME</div></div></header>${state.page === "Settings" ? settingsView() : `<div class="heading"><div><div class="eyebrow">YOUR PERSONAL MANGA SPACE</div><h1>${state.page === "Library" ? "My library" : state.page === "Browse" ? "Discover your next story" : state.page}</h1><p class="sub">${{ Library: "All your stories. Right where you left them.", Browse: "Browse and search your installed manga sources.", History: "Every story you’ve spent a little time with.", Downloads: "Chapters saved on this computer, ready to read offline.", Updates: "Unread chapters from your online collection." }[state.page]}</p></div><div class="button-row">${button("import", icon("plus") + " Import files")}${button(state.page === "Browse" ? "refresh-source" : state.page === "Updates" ? "refresh-library" : "browse", icon(state.page === "Updates" ? "updates" : "browse") + (state.page === "Browse" ? " Refresh" : state.page === "Updates" ? " Check updates" : " Browse manga"), "primary")}</div></div>${state.page === "Library" ? hero() : ""}${state.page === "Browse" ? `<div class="source-row"><label>Source <select id="source"><option value="mangadex" ${state.source === "mangadex" ? "selected" : ""}>MangaDex</option><option value="komga" ${state.source === "komga" ? "selected" : ""}>Komga · personal server</option>${typeof extensionOptions === "function" ? extensionOptions() : ""}</select></label><span>${esc(state.settings.language.toUpperCase())} chapters · ${state.total.toLocaleString()} titles</span></div>` : ""}<div class="tabs-row">${["All", "Reading", "Completed", "Favorites", "Local"].map((t) => `<button class="tab ${state.tab === t ? "active" : ""}" data-action="tab" data-tab="${t}">${t}${t === "All" ? `<span>${state.page === "Browse" ? state.catalog.length : state.books.length}</span>` : ""}</button>`).join("")}</div><div class="tools"><label class="search">${icon("search")}<input id="search" aria-label="Search manga" placeholder="${state.page === "Browse" ? "Search source…" : "Search your library…"}" value="${esc(state.query)}"></label><div class="toolbar-right"><span class="result-count">${data.length} titles</span><select id="sort" aria-label="Sort titles">${["Recent", "Title A–Z", "Unread chapters", "Recently read"].map((s) => `<option ${state.sort === s ? "selected" : ""}>${s}</option>`).join("")}</select><div class="view-switch">${button("grid", icon("grid"), !state.list ? "active" : "", 'aria-label="Grid view"')}${button("list", icon("list"), state.list ? "active" : "", 'aria-label="List view"')}</div></div></div>${state.error ? `<div class="error-box" role="alert">${esc(state.error)} ${button(state.page === "Browse" ? "refresh-source" : "reload", "Retry")}</div>` : ""}<div class="grid ${state.list ? "list" : ""}">${data.map(card).join("")}${state.loading ? '<div class="empty"><span class="spinner"></span> Connecting to source…</div>' : !data.length ? `<div class="empty">${icon("book")}<h3>${state.page === "Library" ? "Your library is a blank page." : "No titles here yet."}</h3><p>${state.query ? "Try another search." : state.page === "Browse" ? "Choose a source and search for a title." : "Browse manga or import CBZ, CBR, PDF, and image folders."}</p>${button("browse", "Discover manga", "primary")} ${button("import-folder", "Import folder")}</div>` : ""}</div>${state.page === "Browse" && state.catalog.length < state.total && !state.loading ? `<div class="load-more">${button("load-more", "Load more titles")}</div>` : ""}<footer class="footer"><span>${state.page === "Browse" ? "Connected to " + (typeof sourceLabel === "function" ? esc(sourceLabel(state.source)) : state.source) : state.books.length + " stories. Countless worlds to get lost in."}</span><span>Local-first storage · Rust + WebView2</span></footer>`}</main></div>`;
+  arrangeDesktopHeader();
   loadCovers();
   if (searchFocus !== null) {
     const input = document.querySelector("#search");
@@ -222,7 +228,13 @@ function render() {
     input?.setSelectionRange(searchFocus, searchFocus);
   }
 }
-async function navigate(page) {
+function arrangeDesktopHeader() {
+  const header=document.querySelector('.main .topbar'), search=document.querySelector('.main .tools .search');
+  if(header && search) header.insertBefore(search,header.querySelector('.top-right'));
+}
+async function navigate(page, remember = true) {
+  if(remember && state.page!==page){navigationHistory.push({page:state.page,tab:state.tab,query:state.query,mobileSearch:state.mobileSearch});if(navigationHistory.length>20)navigationHistory.shift();}
+  lastRootBack=0;
   searchVersion++;
   clearTimeout(searchTimer);
   state.page = page;
@@ -481,6 +493,7 @@ async function resume(id) {
 }
 async function openReader(id, chapterId, page = null) {
   if (typeof stopReaderStrip === "function") await stopReaderStrip();
+  const returnDetail=state.detail?.id || state.reader?.returnDetail || null;
   closeDetail();
   state.reader?.pdfRender?.cancel();
   state.reader?.pdfDocument?.destroy();
@@ -490,6 +503,7 @@ async function openReader(id, chapterId, page = null) {
     c = b?.chapters.find((c) => c.id === chapterId);
   if (!c) return;
   state.reader = {
+    returnDetail,
     book: b,
     chapter: c,
     page: 0,
@@ -711,6 +725,7 @@ function setReaderFullscreen(enabled) {
   applyReaderChrome();
 }
 function closeReader() {
+  const returnDetail=state.reader?.returnDetail;
   if (typeof stopReaderStrip === "function") stopReaderStrip();
   readerVersion++;
   state.reader?.pdfRender?.cancel();
@@ -721,6 +736,25 @@ function closeReader() {
   document.querySelector("#reader")?.remove();
   clearPages();
   render();
+  if(returnDetail && bookById(returnDetail)){state.detail=bookById(returnDetail);renderDetails();}
+}
+function handleAppBack() {
+  if(state.reader || state.detail || state.mobileSearch || navigationHistory.length || document.querySelector('#mobile-sheet') || state.page!=='Library')lastRootBack=0;
+  if(document.querySelector('#mobile-sheet')){closeMobileSheet();return true;}
+  if(state.reader){closeReader();return true;}
+  if(state.detail){closeDetail();return true;}
+  if(state.mobileSearch){state.mobileSearch=false;state.query='';render();return true;}
+  const previous=navigationHistory.pop();
+  if(previous){
+    searchVersion++;clearTimeout(searchTimer);
+    Object.assign(state,previous,{error:'',loading:false});render();
+    if(state.page==='Browse')searchSource().catch(toast);
+    return true;
+  }
+  if(state.page!=='Library'){navigate('Library',false).catch(toast);return true;}
+  const now=Date.now();
+  if(lastRootBack && now-lastRootBack<2000){lastRootBack=0;return false;}
+  lastRootBack=now;toast('Swipe back again to leave Mreader');return true;
 }
 function settingsView() {
   const s = state.settings;
@@ -907,6 +941,7 @@ document.addEventListener("input", (e) => {
 document.addEventListener("change", async (e) => {
   try {
     if (e.target.id === "source") {
+      await api('source_prefer',{source:e.target.value});
       state.source = e.target.value;
       await searchSource();
     }

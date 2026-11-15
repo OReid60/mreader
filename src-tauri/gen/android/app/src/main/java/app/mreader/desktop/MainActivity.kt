@@ -16,19 +16,31 @@ import androidx.activity.OnBackPressedCallback
 class MainActivity : TauriActivity() {
   private var readerImmersive = false
   private var readerBack: OnBackPressedCallback? = null
+  private var backInFlight = false
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     webView.addJavascriptInterface(ReaderChrome(this, webView), "MreaderChrome")
-    readerBack = object : OnBackPressedCallback(false) {
+    readerBack = object : OnBackPressedCallback(true) {
       override fun handleOnBackPressed() {
-        webView.evaluateJavascript("if (typeof setReaderFullscreen === 'function') setReaderFullscreen(false)", null)
-        setReaderImmersive(false)
+        val content = findViewById<View>(android.R.id.content)
+        if (ViewCompat.getRootWindowInsets(content)?.isVisible(WindowInsetsCompat.Type.ime()) == true) {
+          WindowInsetsControllerCompat(window, content).hide(WindowInsetsCompat.Type.ime())
+          return
+        }
+        if (backInFlight) return
+        backInFlight = true
+        webView.evaluateJavascript("typeof handleAppBack === 'function' ? handleAppBack() : true") { handled ->
+          backInFlight = false
+          if (handled == "false") {
+            isEnabled = false
+            try { onBackPressedDispatcher.onBackPressed() } finally { isEnabled = true }
+          }
+        }
       }
     }.also { onBackPressedDispatcher.addCallback(this, it) }
   }
   fun setReaderImmersive(enabled: Boolean) {
     readerImmersive = enabled
-    readerBack?.isEnabled = enabled
     WindowInsetsControllerCompat(window, window.decorView).apply {
       systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
       if (enabled) hide(WindowInsetsCompat.Type.systemBars()) else show(WindowInsetsCompat.Type.systemBars())

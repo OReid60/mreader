@@ -26,6 +26,18 @@ const { pathToFileURL } = require('node:url');
           if (name === 'apk_install') {apk.installed=[{extension,repository:apk.repositories[0].url}];return structuredClone(apk);}
           if (name === 'apk_remove') {apk.installed=[];return structuredClone(apk);}
           if (name === 'cloud_status') return {configured:true,signedIn:false};
+          if (name === 'source_prefer') {window.chosenSource=args.source;return;}
+          if (name === 'cloud_sync') {
+            const failed=!!window.failSourceSync;
+            apk.installed=failed?[]:[{extension,repository:apk.repositories[0].url}];
+            return {snapshot:snapshot(),status:{configured:true,signedIn:true},extensions:[],apk:structuredClone(apk),preferredSource:'apk:1998944621602463790',sourceChoices:[{kind:'apk',value:{name:extension.name,package:extension.package}}],sourceSyncErrors:failed?['Source download unavailable; retry sync']:[]};
+          }
+          if (name === 'open_chapter') return {pages:3,pdf:false};
+          if (name === 'page_data') {
+            if(!window.fixturePng){const canvas=document.createElement('canvas');canvas.width=400;canvas.height=600;canvas.getContext('2d').fillRect(0,0,400,600);window.fixturePng=fetch(canvas.toDataURL()).then(r=>r.arrayBuffer());}
+            return(await window.fixturePng).slice(0);
+          }
+          if (name === 'save_progress') return;
           if (name === 'verification_plan') return {enabled:false};
           if (name === 'cover_data') throw Error('Synthetic cover is provided by the layout test');
           if (name === 'chapters') return structuredClone(books.find(book => book.id === args.bookId));
@@ -90,6 +102,39 @@ const { pathToFileURL } = require('node:url');
     const desktop = await open(1440,false);
     assert.equal(await desktop.locator('.sidebar').count(),1);
     assert.equal(await desktop.locator('.mobile-bottom').count(),0);
+    await phone.evaluate(async()=>{
+      navigationHistory.length=0;state.page='Library';state.mobileSearch=false;state.query='';render();
+      await navigate('Browse');await navigate('Settings');
+      if(!handleAppBack()||state.page!=='Browse')throw Error('Back must return to the previous tab');
+      if(!handleAppBack()||state.page!=='Library')throw Error('Back must return to library');
+      await showDetails(state.books[0].id);
+      await openReader(state.books[0].id,state.books[0].chapters[0].id,0);
+      if(!handleAppBack()||state.reader||!state.detail)throw Error('Reader back must return to title details');
+      if(!handleAppBack()||state.detail)throw Error('Details back must return to library');
+      showMobileSheet('filters');if(!handleAppBack()||document.querySelector('#mobile-sheet'))throw Error('Back must close sheets');
+      state.mobileSearch=true;state.query='test';render();
+      if(!handleAppBack()||state.mobileSearch||state.query)throw Error('Back must dismiss search');
+      if(!handleAppBack()||handleAppBack()!==false)throw Error('Accidental root back must not close the app');
+    });
+    for(const tab of ['Library','Updates','History','Browse','Downloads','Settings']){
+      await desktop.evaluate(tab=>navigate(tab),tab);
+      assert((await desktop.locator('.main').boundingBox()).y<2,`${tab} must start at the top`);
+      assert((await desktop.locator('.heading').boundingBox()).y<115,`${tab} heading wastes top space`);
+      if(tab!=='Settings')assert.equal(await desktop.locator('.topbar #search').count(),1);
+    }
+    await desktop.screenshot({path:path.join(output,'desktop-settings-compact.png')});
+    for(const device of [phone,desktop]){
+      await device.evaluate(async()=>{featureState.cloud.signedIn=true;await navigate('Browse');await syncAccount();});
+      assert.equal(await device.locator('#source').inputValue(),'apk:1998944621602463790');
+      assert.equal(await device.locator('#source option[value="apk:1998944621602463790"]').count(),1);
+    }
+    await desktop.screenshot({path:path.join(output,'desktop-browse-synced.png')});
+    await phone.locator('#source').selectOption('komga');
+    await phone.waitForFunction(()=>window.chosenSource==='komga'&&state.source==='komga');
+    await phone.evaluate(async()=>{window.failSourceSync=true;await syncAccount();await navigate('Settings');});
+    assert(await phone.getByRole('button',{name:'Remove from synced sources'}).isVisible());
+    assert(await phone.getByText('Source download unavailable; retry sync',{exact:true}).isVisible());
+    for(const device of [phone,desktop])await device.evaluate(()=>{featureState.cloud.signedIn=false;clearTimeout(featureState.syncTimer);});
     for (const readerPage of [phone, await open(900,true)]) {
       await readerPage.evaluate(() => {
         window.MreaderChrome = { setImmersive(value) { window.lastImmersive = value; } };

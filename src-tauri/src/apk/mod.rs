@@ -407,13 +407,13 @@ mod tests {
             engine.set_dir(&dir).unwrap();
             let catalog = engine.repository(KEI.into(), None).await.unwrap();
             assert!(catalog.repositories[0].catalog.extensions.len() > 1000);
-            engine
-                .install(
-                    KEI.into(),
-                    "eu.kanade.tachiyomi.extension.all.mangaplus".into(),
-                )
-                .await
-                .unwrap();
+            let extension=catalog.repositories[0].catalog.extensions.iter().find(|e|e.package=="eu.kanade.tachiyomi.extension.all.mangaplus").unwrap();
+            let subscription=crate::source_sync::Subscription{package:extension.package.clone(),name:extension.name.clone(),repository:KEI.into(),signing_key:catalog.repositories[0].catalog.signing_key.clone(),version_code:extension.version_code};
+            let choices=std::collections::BTreeMap::from([(format!("apk:{}",extension.package),crate::cloud::Timed{value:crate::source_sync::Choice::Apk(subscription),updated_at:1})]);
+            assert!(crate::source_sync::prepare(&engine,&choices,&Default::default()).await.is_empty());
+            let installed=std::fs::read(dir.join("state.json")).unwrap();
+            assert!(crate::source_sync::prepare(&engine,&choices,&Default::default()).await.is_empty());
+            assert_eq!(std::fs::read(dir.join("state.json")).unwrap(),installed);
             let results = engine
                 .search("1998944621602463790", "Kagurabachi", 1)
                 .await

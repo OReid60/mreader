@@ -31,7 +31,7 @@ function mountReaderStrip(reader, root) {
   status.setAttribute('role', 'status');
   stage.append(status);
   const chapters = reader.book.chapters;
-  const sections = new Map(), cells = new Map(), loaded = new Set();
+  const sections = new Map(), cells = new Map(), loaded = new Set(), nearbyCells = new Set();
   const jobs = [];
   let running = 0, destroyed = false, initializing = true, progressTimer, pendingProgress, scrollFrame, viewAnchor;
   let viewportWidth=root.clientWidth, viewportHeight=root.clientHeight;
@@ -58,6 +58,8 @@ function mountReaderStrip(reader, root) {
   function release(cell) {
     if (cell.pinned) return;
     if (!cell.url) return;
+    cell.cancelDecode?.();
+    cell.cancelDecode=null;
     cell.frame.style.height = `${cell.frame.getBoundingClientRect().height}px`;
     cell.image.removeAttribute('src');
     cell.image.hidden = true;
@@ -78,8 +80,11 @@ function mountReaderStrip(reader, root) {
     }
   }
   function loadPage(cell, priority = false) {
-    if (cell.url) return Promise.resolve();
     if (cell.pending) return cell.pending.then(() => priority && !cell.url && active() ? loadPage(cell,true) : undefined);
+    if (cell.url) return Promise.resolve();
+    if (cell.failed && !priority) return Promise.resolve();
+    cell.failed=false;
+    cell.decode=null;
     cell.frame.querySelector('button')?.remove();
     cell.pending = enqueue(async () => {
       if (!priority && !near(cell.element, root.clientHeight)) return;
@@ -91,8 +96,8 @@ function mountReaderStrip(reader, root) {
       loaded.add(cell);
       cell.image.hidden = false;
       cell.image.src = url;
-      try {
-        await cell.image.decode();
+      const canceled=new Promise(resolve=>{cell.cancelDecode=resolve;});
+      cell.decode=Promise.race([cell.image.decode(),canceled]).then(() => {
         if (!active() || cell.url !== url) return;
         const saved = initializing ? null : anchor();
         cell.frame.style.aspectRatio = `${cell.image.naturalWidth} / ${cell.image.naturalHeight}`;
@@ -101,9 +106,10 @@ function mountReaderStrip(reader, root) {
         restoreAnchor(saved);
         trim();
         schedule();
-      } catch (error) { if (cell.url !== url) return; release(cell); throw error; }
-    }, priority).catch(error => {
+      }).catch(error=>{if(cell.url!==url)return;release(cell);throw error;}).finally(()=>{if(cell.url===url)cell.cancelDecode=null;});
+    }, priority).then(()=>cell.decode).catch(error => {
       if (!active()) return;
+      cell.failed=true;
       const retry = document.createElement('button');
       retry.className = 'strip-retry';
       retry.textContent = `Page ${cell.page + 1} could not load · Retry`;
@@ -111,15 +117,15 @@ function mountReaderStrip(reader, root) {
       retry.addEventListener('click', () => loadPage(cell, true).catch(report));
       cell.frame.append(retry);
       if (priority) throw error;
-    }).finally(() => { cell.pending = null; });
+    }).finally(() => { cell.pending = null; if(active() && !cell.url && !cell.failed && nearbyCells.has(cell))schedule(); });
     return cell.pending;
   }
   const pageObserver = new IntersectionObserver(entries => {
     for (const entry of entries) {
       const cell = cells.get(entry.target);
       if (!cell) continue;
-      if (entry.isIntersecting) loadPage(cell).catch(report);
-      else release(cell);
+      if (entry.isIntersecting) {nearbyCells.add(cell);loadPage(cell).catch(report);}
+      else {nearbyCells.delete(cell);release(cell);}
     }
   }, {root, rootMargin:'800px 0px'});
   function anchor() {
@@ -240,10 +246,11 @@ function mountReaderStrip(reader, root) {
     scrollFrame=null;
     if (!active() || initializing) return;
     preserveResize();
+    for(const cell of nearbyCells)if(!cell.url&&!cell.pending&&!cell.failed)loadPage(cell).catch(report);
     trim();
     const toolbar=root.querySelector('.reader-bar').getBoundingClientRect().height;
     const line=root.getBoundingClientRect().top+toolbar+Math.min(80,(root.clientHeight-toolbar)*0.1);
-    const visible=[...loaded].filter(cell=>near(cell.element,0));
+    const visible=[...loaded].filter(cell=>cell.frame.dataset.loaded==='true' && near(cell.element,0));
     visible.sort((a,b)=>{
       const distance=cell=>{const rect=cell.element.getBoundingClientRect();return line<rect.top?rect.top-line:line>rect.bottom?line-rect.bottom:0;};
       return distance(a)-distance(b);

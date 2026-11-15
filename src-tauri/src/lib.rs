@@ -5,6 +5,7 @@ mod extensions;
 mod local;
 mod model;
 mod sources;
+mod source_sync;
 mod store;
 use futures_util::{stream, StreamExt};
 use model::*;
@@ -35,8 +36,10 @@ impl Core {
         let sources = sources::Sources::new()?;
         sources.apk.set_dir(&data.join("apk-extensions"))?;
         sources.extensions.set_dir(&profile.join("extensions"))?;
+        let store=store::Store::open(&profile.join("library.sqlite"))?;
+        source_sync::migrate(&store,&sources.apk.state()?)?;
         Ok(Self {
-            store: store::Store::open(&profile.join("library.sqlite"))?,
+            store,
             local: local::LocalReader::new(),
             sources,
             cloud,
@@ -815,11 +818,30 @@ async fn apk_install(
     repository: String,
     package: String,
 ) -> Result<apk::State> {
-    core.sources.apk.install(repository, package).await
+    let _guard=core.cloud.gate.lock().await;
+    let state=core.sources.apk.install(repository, package.clone()).await?;
+    if let Some(entry)=state.installed.iter().find(|e|e.extension.package==package){source_sync::installed(&core.store,entry)?;}
+    Ok(state)
 }
 #[tauri::command]
 async fn apk_remove(core: State<'_, Arc<Core>>, package: String) -> Result<apk::State> {
-    core.sources.apk.remove(package).await
+    let _guard=core.cloud.gate.lock().await;
+    let before=core.sources.apk.state()?;
+    let preferred=source_sync::preferred(&source_sync::load(&core.store)?);
+    let entry=before.installed.iter().find(|e|e.extension.package==package);
+    let selected_installed=before.installed.iter().any(|e|e.extension.sources.iter().any(|s|preferred.as_deref()==Some(format!("apk:{}",s.id).as_str())));
+    let reset=entry.is_some_and(|e|e.extension.sources.iter().any(|s|preferred.as_deref()==Some(format!("apk:{}",s.id).as_str()))) || (entry.is_none() && preferred.as_deref().is_some_and(|s|s.starts_with("apk:")) && !selected_installed);
+    let state=if entry.is_some(){core.sources.apk.remove(package.clone()).await?}else{before};
+    core.store.remove_source_value(&format!("apk:{package}"))?;
+    if reset{source_sync::put(&core.store,"preferred",source_sync::Choice::Preferred("mangadex".into()),now_ms())?;}
+    Ok(state)
+}
+#[tauri::command]
+async fn source_prefer(core:State<'_,Arc<Core>>,source:String)->Result<()> {
+    let _guard=core.cloud.gate.lock().await;
+    let available=matches!(source.as_str(),"mangadex"|"komga") || source.strip_prefix("ext:").is_some_and(|id|core.sources.extensions.get(id).is_ok()) || core.sources.apk.state()?.installed.iter().any(|e|e.extension.sources.iter().any(|s|source==format!("apk:{}",s.id)));
+    if !available{return Err("Install this source before selecting it".into());}
+    source_sync::put(&core.store,"preferred",source_sync::Choice::Preferred(source),now_ms())
 }
 #[tauri::command]
 async fn extension_install(
@@ -858,7 +880,13 @@ async fn extension_remove(
 }
 #[tauri::command]
 fn cloud_status(core: State<Arc<Core>>) -> Result<serde_json::Value> {
-    core.cloud.status()
+    let mut status=core.cloud.status()?;
+    let choices=source_sync::load(&core.store)?;
+    if let Some(fields)=status.as_object_mut(){
+        fields.insert("preferredSource".into(),serde_json::json!(source_sync::preferred(&choices)));
+        fields.insert("sourceChoices".into(),serde_json::json!(choices.values().map(|e|&e.value).collect::<Vec<_>>()));
+    }
+    Ok(status)
 }
 #[tauri::command]
 async fn cloud_configure(
@@ -916,6 +944,7 @@ async fn cloud_logout(core: State<'_, Arc<Core>>) -> Result<Snapshot> {
 #[tauri::command]
 async fn cloud_sync(core: State<'_, Arc<Core>>) -> Result<serde_json::Value> {
     let _guard = core.cloud.gate.lock().await;
+    source_sync::migrate(&core.store,&core.sources.apk.state()?)?;
     let local = cloud::Document::from_store(&core.store, core.sources.extensions.list()?)?;
     let committed = core.cloud.exchange(&core.cloud.client, &local).await?;
     let latest = cloud::Document::from_store(&core.store, core.sources.extensions.list()?)?;
@@ -931,9 +960,23 @@ async fn cloud_sync(core: State<'_, Arc<Core>>) -> Result<serde_json::Value> {
         }
     }
     merged.apply(&core.store)?;
+    let source_errors=source_sync::prepare(&core.sources.apk,&merged.source_choices,&merged.deletions).await;
+    let mut source_choices_changed=false;
+    for installed in &core.sources.apk.state()?.installed {
+        if let Some(entry)=merged.source_choices.get(&format!("apk:{}",installed.extension.package)) {
+            if let source_sync::Choice::Apk(spec)=&entry.value {
+                if installed.extension.version_code>spec.version_code && installed.signing_key.eq_ignore_ascii_case(&spec.signing_key) {
+                    let mut updated=spec.clone();updated.version_code=installed.extension.version_code;
+                    source_sync::put(&core.store,&format!("apk:{}",spec.package),source_sync::Choice::Apk(updated),now_ms())?;
+                    source_choices_changed=true;
+                }
+            }
+        }
+    }
+    let choices=source_sync::load(&core.store)?;
     core.cloud.synced()?;
     Ok(
-        serde_json::json!({"snapshot":core.snapshot()?,"status":core.cloud.status()?,"extensions":core.sources.extensions.list()?}),
+        serde_json::json!({"snapshot":core.snapshot()?,"status":core.cloud.status()?,"extensions":core.sources.extensions.list()?,"apk":core.sources.apk.state()?,"sourceChoices":choices.values().map(|e|&e.value).collect::<Vec<_>>(),"preferredSource":source_sync::preferred(&choices),"sourceSyncErrors":source_errors,"sourceChoicesChanged":source_choices_changed}),
     )
 }
 #[tauri::command]
@@ -1028,6 +1071,7 @@ pub fn run() {
             apk_repository,
             apk_install,
             apk_remove,
+            source_prefer,
             extension_install,
             extension_remove,
             extension_example,

@@ -42,6 +42,8 @@ pub struct Document {
     #[serde(default)]
     pub extensions: BTreeMap<String, Timed<Extension>>,
     #[serde(default)]
+    pub source_choices: BTreeMap<String, Timed<crate::source_sync::Choice>>,
+    #[serde(default)]
     pub deletions: BTreeMap<String, i64>,
 }
 // SQLite and in-memory indexes can use NUL separators; PostgreSQL jsonb cannot.
@@ -89,6 +91,7 @@ impl Default for Document {
             books: BTreeMap::new(),
             progress: BTreeMap::new(),
             extensions: BTreeMap::new(),
+            source_choices: BTreeMap::new(),
             deletions: BTreeMap::new(),
         }
     }
@@ -144,6 +147,7 @@ impl Document {
             );
         }
         document.deletions = store.metadata("deleted")?;
+        document.source_choices = crate::source_sync::load(store)?;
         Ok(document)
     }
     pub fn validate(&self) -> Result<()> {
@@ -152,6 +156,15 @@ impl Document {
         }
         if self.books.len() > 10000 || self.extensions.len() > 100 {
             return Err("Sync document exceeds supported library size".into());
+        }
+        if self.source_choices.len() > 201 {
+            return Err("Too many synced source choices".into());
+        }
+        for (id, entry) in &self.source_choices {
+            entry.value.validate(id)?;
+            if entry.updated_at < 0 {
+                return Err("Invalid source timestamp".into());
+            }
         }
         for (id, b) in &self.books {
             if id != &b.value.id
@@ -182,6 +195,16 @@ impl Document {
         remote.validate()?;
         self.validate()?;
         let mut merged = remote.clone();
+        for (id, choice) in &self.source_choices {
+            if merged
+                .source_choices
+                .get(id)
+                .map(|old| choice.updated_at > old.updated_at)
+                .unwrap_or(true)
+            {
+                merged.source_choices.insert(id.clone(), choice.clone());
+            }
+        }
         for (id, b) in &self.books {
             if merged
                 .books
@@ -220,6 +243,19 @@ impl Document {
         }
         let tombs = merged.deletions.clone();
         for (key, stamp) in tombs {
+            if let Some(id) = key.strip_prefix("source:") {
+                if merged
+                    .source_choices
+                    .get(id)
+                    .map(|s| s.updated_at > stamp)
+                    .unwrap_or(false)
+                {
+                    merged.deletions.remove(&key);
+                } else {
+                    merged.source_choices.remove(id);
+                }
+                continue;
+            }
             if let Some(id) = key.strip_prefix("book:") {
                 if merged
                     .books
@@ -279,7 +315,21 @@ impl Document {
                 .iter()
                 .map(|(id, e)| (id.clone(), e.updated_at))
                 .collect(),
-        )
+        )?;
+        let values = self
+            .source_choices
+            .iter()
+            .map(|(id, entry)| {
+                Ok((
+                    id.clone(),
+                    (
+                        serde_json::to_value(&entry.value).map_err(|e| e.to_string())?,
+                        entry.updated_at,
+                    ),
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>>>()?;
+        store.apply_source_values(&values, &self.deletions)
     }
 }
 impl Cloud {
