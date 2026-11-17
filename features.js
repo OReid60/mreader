@@ -477,7 +477,7 @@ document.addEventListener('click',async event=>{
  if(t.dataset.action==='repository-refresh')await apkAction('apk_repository',{url:t.dataset.repository,trustKey:null});
  if(t.dataset.action==='files-layout'){try{applySnapshot(await api('save_settings',{settings:{...state.settings,filesLayout:t.dataset.layout,komgaPassword:''}}));render();}catch(error){toast(error);}}
  if(['cover-warning-hide','cover-warning-show'].includes(t.dataset.action)){const ids=new Set(state.settings.dismissedCoverWarnings||[]);if(t.dataset.action==='cover-warning-hide')ids.add(t.dataset.id);else ids.delete(t.dataset.id);try{applySnapshot(await api('save_settings',{settings:{...state.settings,dismissedCoverWarnings:[...ids],komgaPassword:''}}));if(state.detail)renderDetails();}catch(error){toast(error);}}
- if(t.dataset.action==='choose-custom-cover')chooseCustomCover(t.dataset.id);
+ if(t.dataset.action==='choose-custom-cover'&&t.closest('#detail .detail-cover'))chooseCustomCover(t.dataset.id);
  if(t.dataset.action==='retry-source-cover'){
   const id=t.dataset.id;coverGeneration.set(id,(coverGeneration.get(id)||0)+1);const old=coverCache.get(id);if(old)URL.revokeObjectURL(old);coverCache.delete(id);coverFailed.delete(id);loadCovers();toast('Retrying cover from its installed source…');
  }

@@ -158,7 +158,7 @@ function cover(b, cls = "cover-art") {
   const src = coverCache.get(b.id) || "";
   return src
     ? `<img class="${cls}" src="${esc(src)}" alt="${esc(b.title)} cover" loading="lazy" decoding="async">`
-    : `<div class="${cls} cover-placeholder" data-cover="${esc(b.id)}" ${typeof useMobileLayout==="function"&&useMobileLayout()&&state.books.some(book=>book.id===b.id)?`data-action="choose-custom-cover" data-id="${esc(b.id)}" role="button" tabindex="0" aria-label="Add cover art for ${esc(b.title)}"`:""}>${icon("book")}<span>${esc(b.title)}</span>${typeof mangaExtensionInfo==="function"&&!mangaExtensionInfo(b).installed?'<small>Extension needed for cover art</small>':""}</div>`;
+    : `<div class="${cls} cover-placeholder" data-cover="${esc(b.id)}">${icon("book")}<span>${esc(b.title)}</span>${typeof mangaExtensionInfo==="function"&&!mangaExtensionInfo(b).installed?'<small>Extension needed for cover art</small>':""}</div>`;
 }
 function card(b) {
   const saved = state.books.some((x) => x.id === b.id),
