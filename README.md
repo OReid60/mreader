@@ -8,7 +8,7 @@
 
 A reader for Windows, Android phones and tablets, and Linux.
 
-[**Download Mreader 0.3.27**](https://github.com/OReid60/mreader/releases/tag/v0.3.27) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
+[**Download Mreader 0.3.28**](https://github.com/OReid60/mreader/releases/tag/v0.3.28) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
 
 </div>
 
@@ -30,11 +30,11 @@ A reader for Windows, Android phones and tablets, and Linux.
 
 Install Android updates over the existing app to keep its data. Source extensions, repository links, and manga content are not included. Users obtain and verify repositories independently. Source availability depends on the provider and extension author.
 
-## What’s new in 0.3.27
+## What’s new in 0.3.28
 
-Mreader no longer includes repository shortcuts, default repository signing keys, or a working example extension. Users provide and verify their own repositories. Settings focuses on reader preferences, accounts, sources, files, and backups. Technical configuration details are hidden. Recent updates also bring smoother category swipes, a more compact mobile title view, stronger progress conflict handling, synced custom covers, and offline reading fixes.
+Browse opens with **All installed sources** on Android and desktop, including when sources arrive through account sync. You can still select an individual source. Desktop Library cover clicks open manga details; custom cover uploads are available inside that panel. Users continue to provide and verify their own extension repositories.
 
-See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.27) for downloads and validation notes.
+See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.28) for downloads and validation notes.
 
 ## Build and contribute
 

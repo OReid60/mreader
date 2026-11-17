@@ -1,6 +1,7 @@
 // Native extension management and managed account sync. No credentials enter page storage.
 const featureState = {
   settingsTab: "general",
+  browseSourceChosen: false,
   mobileDownload: null,
   mobileDownloadError: "",
   mobileDownloadBusy: false,
@@ -328,16 +329,17 @@ function userSources() {
 }
 function ensureUserSource() {
   const sources=userSources();
+  if(!featureState.browseSourceChosen && sources.length){state.source="all";return;}
   if(state.source==='all' && sources.length)return;
   if(!sources.some(s=>s.id===state.source)) {
     const known=featureState.apk.installed.some(e=>e.extension.sources.some(s=>'apk:'+s.id===state.source));const pending=!known&&featureState.syncedSources.some(e=>e.kind==='apk' && state.source.startsWith('apk:'));
-    if(!pending)state.source=sources.length>1?'all':sources[0]?.id || '';
+    if(!pending)state.source=sources.length?'all':'';
   }
 }
 function sourceOptions() {
   ensureUserSource();
   const sources=userSources();
-  if(sources.length>1)sources.unshift({id:'all',name:'All installed sources'});
+  if(sources.length)sources.unshift({id:'all',name:'All installed sources'});
   const pending=state.source && !sources.some(s=>s.id===state.source);
   return (pending?`<option value="${esc(state.source)}" selected disabled>Synced source · waiting to prepare</option>`:sources.length?'':'<option value="" selected>Add sources in Settings</option>') + sources.map(s=>`<option value="${esc(s.id)}" ${s.id===state.source?'selected':''}>${esc(s.name)}</option>`).join('');
 }
@@ -369,7 +371,7 @@ async function apkAction(command,args) {
     featureState.apk=await api(command,args);
     const local=await api('cloud_status');
     if(Array.isArray(local.sourceChoices))featureState.syncedSources=local.sourceChoices;
-    if(local.preferredSource)state.source=local.preferredSource;
+    if(featureState.browseSourceChosen&&state.source!=="all"&&local.preferredSource)state.source=local.preferredSource;
     featureState.sourceSyncErrors=[];
     ensureUserSource();
     releaseCoverCache();if(removedSources.length){for(const source of removedSources){sourceRepair.attempted.add(source);sourceRepair.errors.set(source,'Extension was removed. Use Check / install extension to restore it.');}}else sourceRepair.attempted.clear();void repairMissingBookExtensions();toast("Extension list updated");
@@ -472,7 +474,7 @@ async function syncAccount(quiet = false) {
     featureState.syncedSources=result.sourceChoices||[];
     featureState.sourceSyncErrors=result.sourceSyncErrors||[];
     if(result.sourceChoicesChanged)queueAccountSync();
-    const changed=result.preferredSource && result.preferredSource!==state.source;
+    const changed=featureState.browseSourceChosen && state.source!=="all" && result.preferredSource && result.preferredSource!==state.source;
     if(changed){state.source=result.preferredSource;state.catalog=[];state.total=0;searchVersion++;}
     ensureUserSource();
     void repairMissingBookExtensions();

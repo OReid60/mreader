@@ -158,7 +158,7 @@ function cover(b, cls = "cover-art") {
   const src = coverCache.get(b.id) || "";
   return src
     ? `<img class="${cls}" src="${esc(src)}" alt="${esc(b.title)} cover" loading="lazy" decoding="async">`
-    : `<div class="${cls} cover-placeholder" data-cover="${esc(b.id)}" ${state.books.some(book=>book.id===b.id)?`data-action="choose-custom-cover" data-id="${esc(b.id)}" role="button" tabindex="0" aria-label="Add cover art for ${esc(b.title)}"`:""}>${icon("book")}<span>${esc(b.title)}</span>${typeof mangaExtensionInfo==="function"&&!mangaExtensionInfo(b).installed?'<small>Extension needed for cover art</small>':""}</div>`;
+    : `<div class="${cls} cover-placeholder" data-cover="${esc(b.id)}" ${typeof useMobileLayout==="function"&&useMobileLayout()&&state.books.some(book=>book.id===b.id)?`data-action="choose-custom-cover" data-id="${esc(b.id)}" role="button" tabindex="0" aria-label="Add cover art for ${esc(b.title)}"`:""}>${icon("book")}<span>${esc(b.title)}</span>${typeof mangaExtensionInfo==="function"&&!mangaExtensionInfo(b).installed?'<small>Extension needed for cover art</small>':""}</div>`;
 }
 function card(b) {
   const saved = state.books.some((x) => x.id === b.id),
@@ -988,6 +988,7 @@ document.addEventListener("input", (e) => {
 document.addEventListener("change", async (e) => {
   try {
     if (e.target.id === "source") {
+      featureState.browseSourceChosen = true;
       if(e.target.value!=='all')await api('source_prefer',{source:e.target.value});
       state.source = e.target.value;
       await searchSource();
@@ -1087,7 +1088,7 @@ async function boot() {
     await loadDownloadQueue();
     applySnapshot(await api("snapshot"));
     state.page = ["Library","Updates","History","Browse","Downloads"].includes(state.settings.startPage) ? state.settings.startPage : "Library";
-    if(typeof ensureUserSource === "function"){if(userSources().length>1)state.source='all';ensureUserSource();}
+    if(typeof ensureUserSource === "function"){if(userSources().length)state.source='all';ensureUserSource();}
     render();
     if(!verification.enabled&&typeof repairMissingBookExtensions==='function')void repairMissingBookExtensions();
     if(state.page === "Browse" && !verification.enabled)await searchSource();

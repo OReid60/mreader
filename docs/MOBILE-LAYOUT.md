@@ -37,3 +37,12 @@ details and extension API/package identifiers on both platforms. Saved server
 settings remain intact when preferences are saved. Account, sync, migration,
 backups, source installation and local APK sharing remain available. Repository
 signing verification remains available because it protects user-added sources.
+
+## Browse defaults and desktop covers (0.3.28)
+
+Browse defaults to All installed sources even with one eligible source. The
+selection survives account sync and first-time source preparation. Choosing a
+specific source remains available for the session. Existing English-only source
+filtering, bounded request concurrency and temporary Browse snapshots remain.
+Desktop Library placeholders open details; cover uploads stay in the details
+panel. Mobile cover-upload behavior is unchanged.

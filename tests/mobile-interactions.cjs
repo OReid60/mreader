@@ -13,7 +13,7 @@ const {chromium}=require('playwright'),assert=require('assert/strict'),path=requ
    if(name==='search_source'){window.searchCalls++;await new Promise(r=>setTimeout(r,30));return{books:[{id:'browse',title:'Browse result',source:'apk:1',tags:[],chapters:[]}],total:1};}throw Error(name);
   }},event:{listen:async()=>{}},webviewWindow:{getCurrentWebviewWindow:()=>({onDragDropEvent:async()=>{}})}};
  });
- await page.goto(pathToFileURL(path.resolve('index.html')).href);await page.waitForFunction(()=>state.books.length===3);
+ await page.goto(pathToFileURL(path.resolve('index.html')).href);await page.waitForFunction(()=>state.books.length===3);assert.equal(await page.evaluate(()=>state.source),'all','Browse should default to all installed sources even with one source');
  assert.deepEqual(await page.locator('.mobile-bottom button').evaluateAll(ns=>ns.map(n=>n.dataset.page)),['History','Updates','Library','Browse','Settings']);
  await page.evaluate(()=>{state.detail=state.books[0];renderDetails();});const cover=await page.locator('#detail .detail-cover').boundingBox(),source=await page.locator('#detail .manga-source-info').boundingBox();assert(source.x>=cover.x+cover.width-1);
  assert.equal(await page.locator('#detail .download-queue').count(),0);assert.equal(await page.locator('#detail .manga-download-badge').count(),1);

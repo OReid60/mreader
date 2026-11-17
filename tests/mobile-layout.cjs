@@ -248,8 +248,8 @@ const { pathToFileURL } = require('node:url');
     }
     await desktop.screenshot({path:path.join(output,'desktop-settings-compact.png')});
     for(const device of [phone,desktop]){
-      await device.evaluate(async()=>{featureState.cloud.signedIn=true;await navigate('Browse');await syncAccount();});
-      assert.equal(await device.locator('#source').inputValue(),'apk:1998944621602463790');
+      await device.evaluate(async()=>{featureState.cloud.signedIn=true;featureState.browseSourceChosen=false;state.source='all';await navigate('Browse');await syncAccount();});
+      assert.equal(await device.locator('#source').inputValue(),'all');
       assert.equal(await device.locator('#source option[value="apk:1998944621602463790"]').count(),1);
     }
     await desktop.screenshot({path:path.join(output,'desktop-browse-synced.png')});
