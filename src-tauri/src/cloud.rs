@@ -173,6 +173,7 @@ impl Document {
             }
         }
         for (id, b) in &self.books {
+            if let Some(cover)=&b.value.custom_cover{cover.validate()?;}
             if id != &b.value.id
                 || !b.value.path.is_empty()
                 || b.value
@@ -213,6 +214,8 @@ impl Document {
             }
         }
         for (id, b) in &self.books {
+            let mut cover=b.value.custom_cover.clone();
+            if let Some(remote)=merged.books.get(id){crate::custom_cover::merge(&mut cover,&remote.value.custom_cover);}
             if merged
                 .books
                 .get(id)
@@ -221,6 +224,7 @@ impl Document {
             {
                 merged.books.insert(id.clone(), b.clone());
             }
+            if let Some(winner)=merged.books.get_mut(id){winner.value.custom_cover=cover;}
         }
         for (id, e) in &self.extensions {
             if merged
@@ -237,11 +241,12 @@ impl Document {
             p.updated = normalized_time(p.updated);
             if let Some(old) = merged.progress.get(id) {
                 let complete = old.completed || p.completed;
-                if normalized_time(old.updated) > p.updated {
+                if (normalized_time(old.updated), old.page) > (p.updated, p.page) {
                     p = old.clone()
                 }
                 p.completed = complete;
             }
+            p.updated = normalized_time(p.updated);
             merged.progress.insert(id.clone(), p);
         }
         for (k, v) in &self.deletions {
@@ -310,6 +315,7 @@ impl Document {
                         }
                     }
                 }
+                preserve_device_chapters(&mut b.chapters,&local.chapters);
             }
             books.push((b, entry.updated_at));
         }
@@ -718,6 +724,26 @@ mod tests {
         )
         .unwrap()
     }
+    #[test]fn sync_retains_offline_chapters_missing_from_remote_list_and_extension_context(){
+      let store=Store::open(Path::new(":memory:")).unwrap();let mut local=book("offline");
+      local.chapters=serde_json::from_value(json!([{"id":"saved","title":"Chapter 1","number":"1","pages":3,"path":"device/downloads/one","downloaded":true,"sourceMemo":{"mangaPath":"/manga/kagurabachi/"}},{"id":"two","title":"Chapter 2","number":"2","sourceMemo":{"mangaPath":"/manga/kagurabachi/"}}])).unwrap();store.put(&local).unwrap();
+      let mut remote=book("offline");remote.chapters=serde_json::from_value(json!([{"id":"two","title":"Chapter 2","number":"2"}])).unwrap();let mut doc=Document::default();doc.books.insert("offline".into(),Timed{value:remote,updated_at:i64::MAX});doc.apply(&store).unwrap();
+      let result=store.book("offline").unwrap();let saved=result.chapters.iter().find(|c|c.id=="saved").unwrap();assert!(saved.downloaded);assert_eq!(saved.pages,3);assert_eq!(saved.path,"device/downloads/one");assert!(result.chapters.iter().all(|c|c.source_memo.is_some()));assert!(store.progress().unwrap().is_empty());
+      let portable=Document::from_store(&store,vec![]).unwrap();assert!(portable.books["offline"].value.chapters.iter().all(|c|!c.downloaded&&c.path.is_empty()));let restored:Document=serde_json::from_slice(&serde_json::to_vec(&portable).unwrap()).unwrap();assert!(restored.books["offline"].value.chapters.iter().all(|c|c.source_memo.is_some()));
+    }
+    #[test]
+    fn custom_art_syncs_both_ways_survives_metadata_refresh_and_backup_restore(){
+        let desktop=Store::open(Path::new(":memory:")).unwrap();let phone=Store::open(Path::new(":memory:")).unwrap();let restored=Store::open(Path::new(":memory:")).unwrap();
+        let mut b=book("custom-art");let mut bytes=Vec::new();image::codecs::jpeg::JpegEncoder::new(&mut bytes).encode_image(&image::RgbImage::new(32,48)).unwrap();
+        b.custom_cover=Some(crate::custom_cover::Cover::new(&bytes,10).unwrap());desktop.put(&b).unwrap();
+        let wire=serde_json::to_vec(&Document::from_store(&desktop,vec![]).unwrap()).unwrap();let uploaded:Document=serde_json::from_slice(&wire).unwrap();uploaded.apply(&phone).unwrap();assert_eq!(phone.book(&b.id).unwrap().custom_cover,b.custom_cover);
+        let mut reread=phone.book(&b.id).unwrap();reread.custom_cover.as_mut().unwrap().updated_at=20;phone.put(&reread).unwrap();
+        let mut refreshed=book(&b.id);refreshed.title="Refreshed metadata".into();desktop.put(&refreshed).unwrap();assert_eq!(desktop.book(&b.id).unwrap().custom_cover,b.custom_cover);
+        let merged=Document::from_store(&desktop,vec![]).unwrap().merge(&Document::from_store(&phone,vec![]).unwrap()).unwrap();merged.apply(&desktop).unwrap();assert_eq!(desktop.book(&b.id).unwrap().custom_cover,reread.custom_cover);
+        let backup=serde_json::to_vec(&desktop.books().unwrap()).unwrap();let books:Vec<Book>=serde_json::from_slice(&backup).unwrap();restored.merge(&books,&[],&Settings::default()).unwrap();assert_eq!(restored.book(&b.id).unwrap().custom_cover,reread.custom_cover);
+        restored.merge(&[b.clone()],&[],&Settings::default()).unwrap();assert_eq!(restored.book(&b.id).unwrap().custom_cover,reread.custom_cover);
+        let mut newer_metadata=Document::default();newer_metadata.books.insert(b.id.clone(),Timed{value:book(&b.id),updated_at:i64::MAX});let protected=merged.merge(&newer_metadata).unwrap();assert_eq!(protected.books[&b.id].value.custom_cover,reread.custom_cover);assert!(restored.progress().unwrap().is_empty());
+    }
     #[test]
     fn two_devices_merge_progress_and_deletions() {
         let mut desktop = Document::default();
@@ -805,6 +831,8 @@ mod tests {
                 updated_at: stamp,
             },
         );
+        let mut cover_bytes=Vec::new();image::codecs::jpeg::JpegEncoder::new(&mut cover_bytes).encode_image(&image::RgbImage::new(32,48)).unwrap();
+        desktop.books.get_mut("b").unwrap().value.custom_cover=Some(crate::custom_cover::Cover::new(&cover_bytes,stamp).unwrap());
         desktop.progress.insert(
             "b\0c".into(),
             Progress {
@@ -822,7 +850,7 @@ mod tests {
             let mut document = Document::default();
             let mut revision = 0;
             let mut injected = false;
-            for _ in 0..8 {
+            for _ in 0..16 {
                 let (mut socket, _) = listener.accept().unwrap();
                 socket
                     .set_read_timeout(Some(std::time::Duration::from_secs(10)))
@@ -898,16 +926,30 @@ mod tests {
                 "A conflicting remote write must survive retry"
             );
             let mut phone = desktop.clone();
+            phone.books.get_mut("b").unwrap().value.custom_cover.as_mut().unwrap().updated_at=stamp+100;
             phone.progress.get_mut("b\0c").unwrap().page = 12;
             phone.progress.get_mut("b\0c").unwrap().updated = stamp + 100;
             exchange(&client, &cfg, &session, &phone).await.unwrap();
             let resumed = exchange(&client, &cfg, &session, &desktop).await.unwrap();
+            assert_eq!(resumed.books["b"].value.custom_cover,phone.books["b"].value.custom_cover,"A stale desktop must not erase the newer phone cover");
             assert_eq!(
                 resumed.progress["b\0c"].page, 12,
                 "Desktop must resume the newer phone progress"
             );
+            let mut latest=resumed.clone();
+            latest.progress.get_mut("b\0c").unwrap().page=15;
+            latest.progress.get_mut("b\0c").unwrap().updated=stamp+200;
+            exchange(&client,&cfg,&session,&latest).await.unwrap();
+            let protected=exchange(&client,&cfg,&session,&phone).await.unwrap();
+            assert_eq!(protected.progress["b\0c"].page,15,"Stale phone must not overwrite newer desktop");
+            let mut reread=protected;
+            reread.progress.get_mut("b\0c").unwrap().page=2;
+            reread.progress.get_mut("b\0c").unwrap().updated=stamp+300;
+            exchange(&client,&cfg,&session,&reread).await.unwrap();
+            let protected=exchange(&client,&cfg,&session,&latest).await.unwrap();
+            assert_eq!(protected.progress["b\0c"].page,2,"Newer reread must survive stale higher-page sync");
         });
-        assert_eq!(server.join().unwrap().progress["b\0c"].page, 12);
+        assert_eq!(server.join().unwrap().progress["b\0c"].page, 2);
     }
     #[test]
     fn account_profiles_do_not_mix_libraries() {
@@ -925,6 +967,27 @@ mod tests {
         assert!(store.book("guest-book").is_ok());
         drop(store);
         std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn progress_ties_converge_and_newer_rereads_are_preserved() {
+        let stamp=now_ms();
+        let mut desktop=Document::default();let mut phone=Document::default();
+        let p=Progress{book_id:"b".into(),chapter_id:"c".into(),page:20,completed:false,updated:stamp};
+        desktop.progress.insert("b\0c".into(),p.clone());
+        let mut other=p.clone();other.page=3;other.completed=true;
+        phone.progress.insert("b\0c".into(),other.clone());
+        for merged in [desktop.merge(&phone).unwrap(),phone.merge(&desktop).unwrap()] {
+            assert_eq!(merged.progress["b\0c"].page,20);
+            assert!(merged.progress["b\0c"].completed);
+        }
+        let store=Store::open(Path::new(":memory:")).unwrap();store.save_progress(&p).unwrap();
+        store.apply_sync(&[],&[other.clone()],&BTreeMap::new(),&BTreeMap::new()).unwrap();
+        assert_eq!(store.progress().unwrap()[0].page,20);
+        assert!(store.progress().unwrap()[0].completed);
+        other.updated+=1;phone.progress.insert("b\0c".into(),other.clone());
+        assert_eq!(desktop.merge(&phone).unwrap().progress["b\0c"].page,3);
+        store.apply_sync(&[],&[other],&BTreeMap::new(),&BTreeMap::new()).unwrap();
+        assert_eq!(store.progress().unwrap()[0].page,3);
     }
     #[test]
     fn sync_never_overwrites_a_page_read_while_request_is_in_flight() {

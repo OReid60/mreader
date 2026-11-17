@@ -11,6 +11,8 @@ pub struct Book {
     pub description: String,
     #[serde(default)]
     pub cover: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_cover: Option<crate::custom_cover::Cover>,
     pub source: String,
     #[serde(default)]
     pub remote_id: String,
@@ -40,6 +42,8 @@ pub struct Chapter {
     pub downloaded: bool,
     #[serde(default)]
     pub group: String,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    pub source_memo: Option<serde_json::Map<String,serde_json::Value>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -51,10 +55,25 @@ pub struct Progress {
     pub completed: bool,
     pub updated: i64,
 }
+/// Remote/source lists may omit a chapter that is still saved on this device.
+pub fn preserve_device_chapters(incoming:&mut Vec<Chapter>,existing:&[Chapter]){
+ for old in existing{
+  if let Some(chapter)=incoming.iter_mut().find(|c|c.id==old.id){
+   if chapter.source_memo.is_none(){chapter.source_memo=old.source_memo.clone();}
+   if old.downloaded{chapter.path=old.path.clone();chapter.pages=old.pages;chapter.downloaded=true;}
+  }else if old.downloaded{incoming.push(old.clone());}
+ }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
+    #[serde(default = "default_apk_layout")]
+    pub files_layout: String,
+    #[serde(default)]
+    pub dismissed_cover_warnings: Vec<String>,
+    #[serde(default)]
+    pub flagged_extensions: Vec<String>,
     #[serde(default = "default_apk_layout")]
     pub apk_layout: String,
     #[serde(default = "default_start_page")]
@@ -76,6 +95,9 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            files_layout: default_apk_layout(),
+            dismissed_cover_warnings: Vec::new(),
+            flagged_extensions: Vec::new(),
             apk_layout: default_apk_layout(),
             start_page: default_start_page(),
             sidebar_collapsed: false,
@@ -111,8 +133,10 @@ mod reader_layout_tests {
         assert_eq!(old.apk_layout, "list");
         assert_eq!(old.start_page, "Library");
         assert!(!old.sidebar_collapsed);
+        assert!(old.flagged_extensions.is_empty());
         assert_eq!(old.reader_layout, "paged");
         let mut settings = old;
+        settings.flagged_extensions=vec!["apk:fixture.extension".into()];
         settings.reader_layout = "continuous".into();
         settings.apk_layout = "stacked".into();
         settings.start_page = "Downloads".into();

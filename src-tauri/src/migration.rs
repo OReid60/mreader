@@ -71,7 +71,7 @@ pub fn decode(bytes:&[u8])->Result<Backup>{
  if b.manga.iter().map(|m|m.chapters.len()).sum::<usize>()>2_000_000{return Err("Backup contains too many chapters".into())}
  Ok(b)
 }
-fn id(m:&Manga)->String{format!("apk:{}:{:x}",m.source,Sha256::digest(m.url.as_bytes()))}
+pub(crate) fn id(m:&Manga)->String{format!("apk:{}:{:x}",m.source,Sha256::digest(m.url.as_bytes()))}
 fn category<'a>(b:&'a Backup,m:&Manga)->&'a str{m.categories.first().and_then(|id|b.categories.iter().find(|c|c.id==*id||(c.id==0&&c.order==*id))).map(|c|c.name.as_str()).unwrap_or("Default")}
 pub fn preview(b:&Backup,store:&Store,apk:&crate::apk::State)->Result<Preview>{
  let existing=store.books()?;let mut sources=Vec::new();let mut manga=Vec::new();
@@ -94,11 +94,14 @@ pub fn import(b:&Backup,store:&Store,include_history:bool)->Result<usize>{
  for m in b.manga.iter().filter(|m|include_history||m.favorite.unwrap_or(true)){
   if m.title.trim().is_empty()||m.url.is_empty(){continue;}
   let book_id=id(m);let old:Option<String>=tx.query_row("SELECT data FROM books WHERE id=?1",[&book_id],|r|r.get(0)).ok();
-  let mut book=if let Some(text)=old{serde_json::from_str::<Book>(&text).map_err(|e|e.to_string())?}else{Book{id:book_id.clone(),title:m.title.clone(),author:m.author.clone().unwrap_or_default(),description:m.description.clone().unwrap_or_default(),source:format!("apk:{}",m.source),remote_id:m.url.clone(),cover:serde_json::json!({"mangaUrl":m.url,"mangaTitle":m.title}).to_string(),path:String::new(),status:match m.status{1=>"Ongoing",2=>"Completed",6=>"Hiatus",_=>"Unknown"}.into(),tags:m.genres.iter().filter(|t|!t.starts_with("mreader:")).cloned().collect(),chapters:vec![],favorite:false}};
+  let mut book=if let Some(text)=old{serde_json::from_str::<Book>(&text).map_err(|e|e.to_string())?}else{Book{id:book_id.clone(),title:m.title.clone(),author:m.author.clone().unwrap_or_default(),description:m.description.clone().unwrap_or_default(),source:format!("apk:{}",m.source),remote_id:m.url.clone(),cover:serde_json::json!({"mangaUrl":m.url,"mangaTitle":m.title}).to_string(),path:String::new(),status:match m.status{1=>"Ongoing",2=>"Completed",6=>"Hiatus",_=>"Unknown"}.into(),tags:m.genres.iter().filter(|t|!t.starts_with("mreader:")).cloned().collect(),chapters:vec![],favorite:false,custom_cover:None}};
+  if let Some(source)=b.sources.iter().find(|source|source.id==m.source){
+   if !book.tags.iter().any(|t|t.starts_with("mreader:source-name:")){book.tags.push(format!("mreader:source-name:{}",source.name));}
+  }
   let cat=category(b,m);if cat!="Default"&&crate::categories::validate(cat).is_ok(){if !book.tags.iter().any(|t|t.starts_with("mreader:category:")){book.tags.push(format!("mreader:category:{cat}"));}tx.execute("INSERT OR IGNORE INTO sync_meta VALUES('category',?1,?2)",rusqlite::params![cat,now_ms()]).map_err(|e|e.to_string())?;}
   for c in &m.chapters{
    if c.url.is_empty(){continue;}
-   if !book.chapters.iter().any(|old|old.id==c.url){book.chapters.push(Chapter{id:c.url.clone(),title:c.name.clone(),number:if c.number.is_finite(){c.number.to_string()}else{String::new()},pages:0,path:String::new(),downloaded:false,group:c.group.clone().unwrap_or_default()});}
+   if !book.chapters.iter().any(|old|old.id==c.url){book.chapters.push(Chapter{id:c.url.clone(),title:c.name.clone(),number:if c.number.is_finite(){c.number.to_string()}else{String::new()},pages:0,path:String::new(),downloaded:false,source_memo:None,group:c.group.clone().unwrap_or_default()});}
    if c.read||c.page>0||m.history.iter().any(|h|h.url==c.url){
     let stamp=m.history.iter().find(|h|h.url==c.url).map(|h|h.read.max(1)).unwrap_or(1);
     tx.execute("INSERT INTO progress VALUES(?1,?2,?3,?4,?5) ON CONFLICT(book,chapter) DO UPDATE SET completed=MAX(progress.completed,excluded.completed),page=CASE WHEN excluded.updated>progress.updated THEN excluded.page ELSE progress.page END,updated=MAX(progress.updated,excluded.updated)",rusqlite::params![book_id,c.url,c.page.clamp(0,100_000),c.read,stamp]).map_err(|e|e.to_string())?;
@@ -112,6 +115,7 @@ pub fn import(b:&Backup,store:&Store,include_history:bool)->Result<usize>{
 }
 #[cfg(test)] mod tests{
  use super::*;
+ #[test] fn migration_remembers_source_name_without_an_extension(){let b=Backup{manga:vec![Manga{source:123,url:"/m".into(),title:"Fixture".into(),..Default::default()}],sources:vec![Source{id:123,name:"Original source".into()}],..Default::default()};let s=Store::open(std::path::Path::new(":memory:")).unwrap();import(&b,&s,false).unwrap();assert!(s.books().unwrap()[0].tags.contains(&"mreader:source-name:Original source".into()));}
  #[test] fn history_only_titles_require_opt_in(){let b=Backup{manga:vec![Manga{source:1,url:"/saved".into(),title:"Saved".into(),favorite:Some(true),..Default::default()},Manga{source:1,url:"/history".into(),title:"History".into(),favorite:Some(false),..Default::default()}],..Default::default()};let s=Store::open(std::path::Path::new(":memory:")).unwrap();let p=preview(&b,&s,&Default::default()).unwrap();assert_eq!(p.manga.len(),2);assert_eq!(p.library_count,1);assert_eq!(import(&b,&s,false).unwrap(),1);assert_eq!(s.books().unwrap().len(),1);assert_eq!(import(&b,&s,true).unwrap(),2);assert_eq!(s.books().unwrap().len(),2);}
  #[test] fn migration_preview_is_read_only_and_import_is_idempotent(){let m=Manga{source:123,url:"/m".into(),title:"Fixture".into(),favorite:Some(true),chapters:vec![BackupChapter{url:"/c".into(),name:"Chapter".into(),read:true,page:4,number:1.,..Default::default()}],..Default::default()};let b=Backup{manga:vec![m],..Default::default()};let decoded=decode(&b.encode_to_vec()).unwrap();let s=Store::open(std::path::Path::new(":memory:")).unwrap();assert_eq!(preview(&decoded,&s,&Default::default()).unwrap().read,1);assert!(s.books().unwrap().is_empty());import(&decoded,&s,false).unwrap();import(&decoded,&s,false).unwrap();assert_eq!(s.books().unwrap().len(),1);assert!(s.progress().unwrap()[0].completed);assert!(!s.books().unwrap()[0].chapters[0].downloaded);}
  #[test] fn corrupt_backup_is_rejected(){assert!(decode(b"not a backup").is_err());}

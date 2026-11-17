@@ -1,6 +1,6 @@
 {
   "name": "mreader",
-  "version": "0.3.14",
+  "version": "0.3.26",
   "private": true,
   "description": "Rust-powered desktop manga reader",
   "scripts": {
@@ -11,7 +11,7 @@
     "test:mobile": "node tests/mobile-layout.cjs",
     "test:reader": "node tests/reader-strip.cjs",
     "test:offline": "node tests/offline-browse.cjs",
-    "test:migration": "node tests/migration-layout.cjs"
+    "test:migration": "node tests/migration-layout.cjs && node tests/migration-guard.cjs"
   },
   "devDependencies": {
     "playwright": "1.65.1"

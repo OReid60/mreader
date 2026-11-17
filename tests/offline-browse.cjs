@@ -52,7 +52,7 @@ const path=require('node:path');
   await page.evaluate(()=>showDetails('test:a'));
   assert.equal(await page.locator('[data-action="download-all"]').count(),1);
   const task=page.evaluate(()=>downloadAllChapters('test:a'));
-  await page.waitForFunction(()=>document.querySelector('.download-queue')?.textContent.includes('1/2 pages'));
+  await page.waitForFunction(()=>downloadJobs.get('test:a')?.pageDone===1&&downloadJobs.get('test:a')?.pageTotal===2);
   await task;
   await page.waitForFunction(()=>downloadJobs.get('test:a')?.failed.length===1);
   assert.equal(await page.evaluate(()=>downloadJobs.get('test:a').failed.length),1);
@@ -73,6 +73,8 @@ const path=require('node:path');
   await page.evaluate(()=>{closeDetail();return searchSource();});
   assert.equal(await page.evaluate(()=>testCalls.filter(c=>c.name==='search_source').length),before);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  const removed=await page.evaluate(()=>{downloadJobs.clear();downloadJobs.set('apk:1:removed',{id:'apk:1:removed',title:'Old source entry',done:1,total:1,pending:[],failed:[],active:null,paused:false});return downloadQueueView();});
+  assert(removed.includes('Title removed from library'));assert(!removed.includes('Ready offline'),'A completed queue for a removed source entry must not claim offline availability');
   assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS desktop/mobile: bulk download progress, skip downloaded, failure/retry, inferred read styling/reread, compact categories, new badges, hidden Komga, unified results, primary chapter count and cached Browse');

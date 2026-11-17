@@ -19,17 +19,28 @@ def classes(dex):
 
 def check(path):
     found = []
+    descriptors = set()
     total = 0
     with zipfile.ZipFile(path) as apk:
         for name in apk.namelist():
             if name.startswith('classes') and name.endswith('.dex'):
                 for descriptor in classes(apk.read(name)):
+                    descriptors.add(descriptor)
                     total += 1
                     if descriptor.startswith('L') and '/' not in descriptor:
                         found.append(descriptor)
     if found:
         raise SystemExit(f'FAIL: {len(found)} host classes may shadow extension classes: {found[:12]}')
+    # zstd JNI looks up both interfaces and implementations during initialization;
+    # unused compression classes must survive shrinking in a decompression-only app.
+    required = {f'Lcom/squareup/zstd/{name};' for name in
+                ('ZstdCompressor', 'ZstdDecompressor', 'JniZstdCompressor',
+                 'JniZstdDecompressor', 'JniZstdKt')}
+    missing = sorted(required - descriptors)
+    if missing:
+        raise SystemExit(f'FAIL: required zstd JNI classes were removed or renamed: {missing}')
     print(f'PASS: {total} host classes checked; no default-package extension collisions')
+    print('PASS: zstd JNI compressor/decompressor classes retain their original names')
 
 
 if __name__ == '__main__':

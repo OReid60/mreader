@@ -1,10 +1,12 @@
+param([string]$Version)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
+if(-not$Version){$Version=(Get-Content (Join-Path $root 'src-tauri/tauri.conf.json') -Raw|ConvertFrom-Json).version}
 $destination=Join-Path $root 'resources/mobile/Mreader-android.apk'
-if(-not(Test-Path -LiteralPath $destination)){
- $local=Join-Path $root 'releases/android/Mreader-0.3.9-arm64.apk'
- if(-not(Test-Path -LiteralPath $local)){throw 'Download the signed Mreader 0.3.9 ARM64 APK from the private release into releases/android before building desktop.'}
- New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
- Copy-Item -LiteralPath $local -Destination $destination
-}
-if((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'd65d8cefb0a37169bf6a43ce768bfc80b1093ef755724ebc3770680cc9cc069b'){throw 'Bundled Android installer hash mismatch'}
+$source=Join-Path $root "releases/android/Mreader-$Version-arm64.apk"
+$marker=Join-Path $root 'resources/mobile/apk-version.txt'
+New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force|Out-Null
+if(Test-Path -LiteralPath $source){Copy-Item -LiteralPath $source -Destination $destination -Force;[IO.File]::WriteAllText($marker,$Version)}
+elseif(-not(Test-Path -LiteralPath $destination)-or-not(Test-Path -LiteralPath $marker)-or[IO.File]::ReadAllText($marker).Trim()-ne$Version){throw "Build or obtain the signed Mreader-$Version-arm64.apk in releases/android before packaging desktop."}
+if((Get-Item -LiteralPath $destination).Length-lt1000000){throw 'Bundled APK is incomplete'}
+Get-FileHash -LiteralPath $destination -Algorithm SHA256|Select-Object Hash,Path

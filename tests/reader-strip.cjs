@@ -90,6 +90,14 @@ const {pathToFileURL}=require('node:url');
    await page.evaluate(async()=>{closeReader();await flushStripProgress();});
    assert.equal(await page.evaluate(()=>activeUrls.size),0,'Closing must revoke all decoded image URLs');
    assert(await page.locator('.mobile-bottom').isVisible());
+   await page.evaluate(()=>{state.books[0].source='apk:offline';state.books[0].chapters.forEach((c,i)=>c.downloaded=i===0);Object.defineProperty(navigator,'onLine',{configurable:true,value:false});window.testChapters=[];window.testPages=[];});
+   await page.evaluate(()=>openReader('strip-book','c0',0));await page.waitForFunction(()=>document.querySelector('.strip-image[src]'));
+   await page.evaluate(()=>{const root=document.querySelector('#reader');root.scrollTop=root.scrollHeight;});await page.waitForTimeout(150);
+   assert((await page.evaluate(()=>testChapters)).every(id=>id==='c0'),'Offline strip must not request undownloaded siblings from the extension');
+   assert((await page.locator('.strip-chapter-load').allTextContents()).some(t=>t.includes('Not downloaded on this device')));
+   assert.equal(await page.locator('.strip-status').innerText(),'');
+   await assert.rejects(()=>page.evaluate(()=>state.reader.strip.jump(state.reader.book.chapters[1],0)),/not downloaded on this device/);
+   await page.evaluate(async()=>{closeReader();await flushStripProgress();});
    assert.deepEqual(errors,[]);
    await page.close();
   }

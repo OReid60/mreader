@@ -38,3 +38,28 @@ Repository references are shown for review, never automatically trusted/installe
 The supplied backup is not uploaded or included in builds or repository commits.
 
 Field numbers follow the official Mihon [backup model](https://github.com/mihonapp/mihon/tree/main/app/src/main/java/eu/kanade/tachiyomi/data/backup/models).
+# Source refresh after restoring
+
+After confirming a Mihon/Tachiyomi migration, Mreader checks the imported online
+titles against their installed sources. Mreader JSON backup restore also refreshes
+online titles. Two workers refresh chapters and cover art, with visible counts
+and per-title failures in Migration. Missing extensions and offline sources can
+be retried after adding the matching repository or reconnecting. Before refresh,
+the migration guard installs missing APK extensions matched by exact source ID
+from repositories already added by the user. Installed sources are skipped;
+packages serving several titles or languages are installed once per run.
+Missing or ambiguous matches and install/signature failures are shown for retry.
+The library also checks missing APK sources at startup and after sync. A failed
+cover can trigger this check. Only exact matches in configured repositories are
+installed; pending installs are shared across concurrent checks. Manga summaries
+show the extension name and installation status, and distinguish a missing
+extension from an installed extension whose cover/source fails. Mihon source names
+are retained in metadata so summaries remain informative without an installed APK.
+
+Metadata search matches the exact source title URL/ID; it never silently switches
+to a different result with a similar name. Existing reading progress and downloaded
+chapters stay intact. Cover refresh bypasses the cached image, replacing it only
+after a fresh image has been fetched and decoded successfully. Local imports are
+not sent to an online source. Migration never adds or trusts repository references
+from a backup automatically. Installing an extension does not guarantee that its
+website is reachable or that the extension is maintained; manual flags remain notes.

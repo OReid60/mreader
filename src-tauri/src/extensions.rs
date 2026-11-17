@@ -339,6 +339,7 @@ impl Extension {
                 tags: vec![self.name.clone()],
                 chapters: Vec::new(),
                 favorite: false,
+        custom_cover: None,
             });
         }
         let total = self
@@ -401,7 +402,7 @@ impl Extension {
                     pages: v.get("pages").and_then(|s| s.parse().ok()).unwrap_or(0),
                     path: String::new(),
                     downloaded: false,
-                    group: v.get("group").cloned().unwrap_or_else(|| self.name.clone()),
+                    source_memo:None,group: v.get("group").cloned().unwrap_or_else(|| self.name.clone()),
                 });
             }
             offset += items.len();

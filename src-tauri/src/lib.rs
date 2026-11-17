@@ -1,4 +1,6 @@
 mod mobile_download;
+mod custom_cover;
+mod shutdown_trace;
 mod downloads;
 mod migration;
 mod categories;
@@ -44,6 +46,7 @@ impl Core {
         sources.apk.set_dir(&data.join("apk-extensions"))?;
         sources.extensions.set_dir(&profile.join("extensions"))?;
         let store=store::Store::open(&profile.join("library.sqlite"))?;
+        custom_cover::migrate(&profile,&store)?;
         source_sync::migrate(&store,&sources.apk.state()?)?;
         let queue=downloads::Queue::default();queue.load(&store)?;
         Ok(Self {
@@ -186,6 +189,9 @@ fn edit_category(core: State<Arc<Core>>, action: String, name: String, replaceme
 }
 #[tauri::command]
 async fn chapters(core: State<'_, Arc<Core>>, book_id: String, refresh: bool) -> Result<Book> {
+    refresh_chapters(core.inner(), book_id, refresh).await
+}
+async fn refresh_chapters(core: &Arc<Core>, book_id: String, refresh: bool) -> Result<Book> {
     let mut b = core.store.book(&book_id)?;
     if b.source != "local" && (refresh || b.chapters.is_empty()) {
         let mut chapters = core.sources.chapters(&b, &core.settings()?).await?;
@@ -216,6 +222,12 @@ async fn chapters(core: State<'_, Arc<Core>>, book_id: String, refresh: bool) ->
                 }
             }
         }
+        if b.source=="apk:6084907896154116083" && b.remote_id.starts_with("/manga/") {
+            for old in b.chapters.iter().filter(|c|c.id.contains("/volume/")) {
+                if !chapters.iter().any(|c|c.id==old.id){chapters.push(old.clone());}
+            }
+        }
+        preserve_device_chapters(&mut chapters,&b.chapters);
         b.chapters = chapters;
         core.store.put(&b)?
     }
@@ -447,7 +459,24 @@ async fn cover_data(core: State<'_, Arc<Core>>, book: Book) -> Result<tauri::ipc
         .await
         .map(tauri::ipc::Response::new)
 }
+#[tauri::command]
+async fn set_custom_cover(core:State<'_,Arc<Core>>,request:tauri::ipc::Request<'_>)->Result<tauri::ipc::Response>{
+    let id=request.headers().get("x-mreader-book").and_then(|v|v.to_str().ok()).ok_or("Missing manga identity")?;
+    let id=percent_encoding::percent_decode_str(id).decode_utf8().map_err(|e|e.to_string())?.into_owned();
+    let bytes=custom_cover::upload_body(request.body())?;
+    let _guard=core.cloud.gate.lock().await;let mut book=core.store.book(&id)?;
+    let jpeg=custom_cover::save(core.cloud.profile_dir(&core.data)?,id,bytes).await?;
+    let now=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e|e.to_string())?.as_millis() as i64;
+    let stamp=book.custom_cover.as_ref().map(|c|c.updated_at.saturating_add(1)).unwrap_or(1).max(now);
+    book.custom_cover=Some(custom_cover::Cover::new(&jpeg,stamp)?);core.store.put(&book)?;
+    Ok(tauri::ipc::Response::new(jpeg))
+}
 async fn cover_bytes(core: Arc<Core>, book: Book) -> Result<Vec<u8>> {
+    cover_bytes_with_refresh(core,book,false).await
+}
+async fn cover_bytes_with_refresh(core: Arc<Core>, book: Book, refresh: bool) -> Result<Vec<u8>> {
+    if let Ok(saved)=core.store.book(&book.id){if let Some(cover)=saved.custom_cover{return cover.bytes()}}
+    if let Ok(bytes)=tokio::fs::read(custom_cover::path(&core.cloud.profile_dir(&core.data)?,&book.id)).await{return Ok(bytes)}
     if book.source == "local" {
         let b = core.store.book(&book.id)?;
         if b.path.is_empty() {
@@ -460,8 +489,8 @@ async fn cover_bytes(core: Arc<Core>, book: Book) -> Result<Vec<u8>> {
         .data
         .join("covers")
         .join(format!("{:x}.jpg", hash.finish()));
-    if let Ok(bytes) = tokio::fs::read(&cache).await {
-        return Ok(bytes);
+    if !refresh {
+        if let Ok(bytes) = tokio::fs::read(&cache).await { return Ok(bytes); }
     }
     let bytes = match book.source.as_str() {
         "local" => {
@@ -498,8 +527,11 @@ async fn cover_bytes(core: Arc<Core>, book: Book) -> Result<Vec<u8>> {
                 .await?
         }
         source if source.starts_with("ext:") || source.starts_with("apk:") => {
+            // Migrated/older records may carry a raw thumbnail URL tied to another runtime.
+            // Resolve APK images by portable manga identity, as Browse does.
+            let cover=if source.starts_with("apk:"){serde_json::json!({"mangaUrl":book.remote_id,"mangaTitle":book.title}).to_string()}else{book.cover.clone()};
             core.sources
-                .page(&book.cover, source, &core.settings()?)
+                .page(&cover, source, &core.settings()?)
                 .await?
         }
         _ => return Err("Unknown cover source".into()),
@@ -579,6 +611,10 @@ fn save_progress(
 }
 #[tauri::command]
 fn save_settings(core: State<Arc<Core>>, mut settings: Settings) -> Result<Snapshot> {
+    if !matches!(settings.files_layout.as_str(),"list"|"stacked"){return Err("Unsupported files layout".into())}
+    if settings.dismissed_cover_warnings.len()>10000||settings.dismissed_cover_warnings.iter().any(|id|id.len()>512){return Err("Invalid cover warning preferences".into())}
+    if settings.flagged_extensions.len()>500 || settings.flagged_extensions.iter().any(|id|id.len()>250){return Err("Too many or invalid extension flags".into());}
+    settings.flagged_extensions.sort();settings.flagged_extensions.dedup();
     if !matches!(settings.apk_layout.as_str(), "list" | "stacked") { return Err("Unsupported extension layout".into()); }
     if !matches!(settings.start_page.as_str(), "Library" | "Updates" | "History" | "Browse" | "Downloads") { return Err("Unsupported startup page".into()); }
     if !matches!(settings.reader_layout.as_str(), "paged" | "continuous") {
@@ -778,6 +814,16 @@ async fn restore_backup(core: State<'_, Arc<Core>>) -> Result<Snapshot> {
         if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() > 32 * 1024 * 1024 {
             return Err("Backup is too large".into());
         }
+        restore_backup_data(&core,&std::fs::read(path).map_err(|e|e.to_string())?)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+// File selection stays outside the shared restore path so it can be verified
+// against a real backup without opening a dialog or touching the active library.
+#[cfg(not(target_os = "android"))]
+fn restore_backup_data(core:&Core,data:&[u8])->Result<Snapshot>{
+    if data.len()>32*1024*1024{return Err("Backup is too large".into())}
         #[derive(serde::Deserialize)]
         struct Backup {
             books: Vec<Book>,
@@ -785,14 +831,16 @@ async fn restore_backup(core: State<'_, Arc<Core>>) -> Result<Snapshot> {
             settings: Settings,
         }
         let backup: Backup =
-            serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
+            serde_json::from_slice(data)
                 .map_err(|e| format!("Invalid backup: {e}"))?;
         let mut validated = Vec::new();
         for mut book in backup.books {
+            if let Some(cover)=&book.custom_cover{cover.validate()?;}
             if book.source == "local" && !book.path.is_empty() {
                 let mut checked = core.local.import(&PathBuf::from(&book.path))?;
                 checked.id = book.id.clone();
                 checked.favorite = book.favorite;
+                checked.custom_cover = book.custom_cover.clone();
                 for c in &mut checked.chapters {
                     if let Some(old) = book.chapters.iter().find(|old| old.path == c.path) {
                         c.id = old.id.clone()
@@ -831,7 +879,7 @@ async fn restore_backup(core: State<'_, Arc<Core>>) -> Result<Snapshot> {
                     .chapters
                     .iter()
                     .find(|c| c.id == p.chapter_id)?;
-                p.page = p.page.min(chapter.pages.saturating_sub(1));
+                if chapter.pages>0 {p.page = p.page.min(chapter.pages.saturating_sub(1));}
                 Some(p)
             })
             .collect();
@@ -840,10 +888,8 @@ async fn restore_backup(core: State<'_, Arc<Core>>) -> Result<Snapshot> {
         core.store.merge(&validated, &progress, &cfg)?;
         core.manifests.lock().map_err(|e| e.to_string())?.clear();
         core.snapshot()
-    })
-    .await
-    .map_err(|e| e.to_string())?
 }
+
 #[tauri::command]
 fn extension_list(core: State<Arc<Core>>) -> Result<Vec<extensions::Extension>> {
     core.sources.extensions.list()
@@ -968,6 +1014,7 @@ fn switch_profile(core: &Core) -> Result<()> {
     }
     let dir = core.cloud.profile_dir(&core.data)?;
     core.store.switch(&dir.join("library.sqlite"))?;
+    custom_cover::migrate(&dir,&core.store)?;
     core.queue.load(&core.store)?;
     *core.migration_preview.lock().map_err(|e|e.to_string())?=None;
     core.sources.extensions.set_dir(&dir.join("extensions"))?;
@@ -1110,6 +1157,7 @@ pub fn run() {
                     window.set_position(tauri::PhysicalPosition::new(pos.x + 40, pos.y + 40))?;
                 }
                 window.set_focusable(false)?;
+                window.maximize()?;
                 window.show()?;
                 window.set_focusable(true)?;
             }
@@ -1131,6 +1179,7 @@ pub fn run() {
             open_chapter,
             page_data,
             cover_data,
+            set_custom_cover,
             save_progress,
             save_settings,
             download_chapter,
@@ -1139,6 +1188,7 @@ pub fn run() {
             downloads::download_stop,
             migration_preview,
             migration_import,
+            refresh_restored_book,
             export_backup,
             restore_backup,
             extension_list,
@@ -1163,14 +1213,36 @@ pub fn run() {
         .build(context)
         .expect("Mreader failed to start")
         .run(|app, event| {
+            match &event {
+                tauri::RunEvent::ExitRequested{..} => shutdown_trace::event("app.exit_requested"),
+                tauri::RunEvent::Exit => shutdown_trace::event("app.exit.enter"),
+                tauri::RunEvent::WindowEvent{event:tauri::WindowEvent::Destroyed,..} => shutdown_trace::event("window.destroyed"),
+                _ => {}
+            }
             #[cfg(not(target_os="android"))]
             if let tauri::RunEvent::WindowEvent {label,event:tauri::WindowEvent::CloseRequested{api,..},..}=&event {
-                if app.state::<Arc<Core>>().queue.busy(){api.prevent_close();if let Some(w)=app.get_webview_window(label){let _=w.minimize();}}
+                shutdown_trace::event("window.close_requested");
+                let busy = app.state::<Arc<Core>>().queue.busy();
+                shutdown_trace::event(if busy {"window.close.download_busy"} else {"window.close.download_idle"});
+                if busy {
+                    api.prevent_close();
+                    shutdown_trace::event("window.close.prevented");
+                    if let Some(w)=app.get_webview_window(label){
+                        shutdown_trace::event("window.minimize.begin");
+                        let _=w.minimize();
+                        shutdown_trace::event("window.minimize.return");
+                    }
+                }
+                shutdown_trace::event("window.close_handler.return");
             }
             if matches!(event, tauri::RunEvent::Exit) {
+                shutdown_trace::event("app.exit.state_lookup");
                 if let Some(core) = app.try_state::<Arc<Core>>() {
+                    shutdown_trace::event("app.exit.state_acquired");
                     core.sources.apk.stop();
+                    shutdown_trace::event("app.exit.runtime_stopped");
                 }
+                shutdown_trace::event("app.exit.return");
             }
         });
 }
@@ -1182,19 +1254,63 @@ fn migration_preview(core:State<Arc<Core>>,request:tauri::ipc::Request<'_>)->Res
     *core.migration_preview.lock().map_err(|e|e.to_string())?=Some(backup);Ok(preview)
 }
 #[tauri::command]
+async fn refresh_restored_book(core:State<'_,Arc<Core>>,book_id:String)->Result<serde_json::Value>{
+    let _guard=core.cloud.gate.lock().await;
+    let original=core.store.book(&book_id)?;
+    if original.source=="local" {return Ok(serde_json::json!({"book":original,"warnings":[]}))}
+    let mut warnings=Vec::<String>::new();
+    let settings=core.settings()?;
+    let found=core.sources.search(&original.source,&original.title,0,&settings).await;
+    match found {
+        Ok(catalog)=>if let Some(current)=catalog.books.into_iter().find(|b|b.remote_id==apk::canonical_mangafire_url(original.source.strip_prefix("apk:").unwrap_or(""),&original.remote_id)){
+            // Re-read after network I/O to preserve concurrent library edits.
+            let mut stored=core.store.book(&book_id)?;
+            stored.cover=current.cover;stored.author=current.author;stored.description=current.description;stored.status=current.status;
+            core.store.put(&stored)?;
+        }else{warnings.push("Exact title identity was not returned by source search; kept existing metadata.".into())},
+        Err(e)=>warnings.push(format!("Metadata refresh: {e}")),
+    }
+    let mut book=refresh_chapters(core.inner(),book_id,true).await?;
+    // Source removals must not make an already-downloaded chapter disappear.
+    for chapter in original.chapters.iter().filter(|c|c.downloaded){
+        if !book.chapters.iter().any(|c|c.id==chapter.id){book.chapters.push(chapter.clone());}
+    }
+    core.store.put(&book)?;
+    if let Err(e)=cover_bytes_with_refresh(core.inner().clone(),book.clone(),true).await{warnings.push(format!("Cover refresh: {e}"));}
+    Ok(serde_json::json!({"book":book,"warnings":warnings}))
+}
+#[tauri::command]
 async fn migration_import(core:State<'_,Arc<Core>>,confirmed:bool,include_history:Option<bool>)->Result<serde_json::Value>{
     if !confirmed{return Err("Review and confirm the migration first".into())}
     let _guard=core.cloud.gate.lock().await;
     let mut pending=core.migration_preview.lock().map_err(|e|e.to_string())?;
     let backup=pending.as_ref().ok_or("Choose and preview a backup first")?;
+    let ids:Vec<String>=backup.manga.iter().filter(|m|include_history.unwrap_or(false)||m.favorite.unwrap_or(true)).map(migration::id).collect();
     let count=migration::import(backup,&core.store,include_history.unwrap_or(false))?;*pending=None;
-    Ok(serde_json::json!({"imported":count,"snapshot":core.snapshot()?}))
+    Ok(serde_json::json!({"imported":count,"bookIds":ids,"snapshot":core.snapshot()?}))
 }
 
 #[cfg(test)]
 mod integration_tests {
     use super::*;
     use std::io::Write;
+
+    #[cfg(not(target_os="android"))]
+    #[test]
+    #[ignore="opt-in: restores the captured two-device test backup into a fresh isolated profile"]
+    fn live_custom_cover_backup_restores_identical_image(){
+        use sha2::{Digest,Sha256};
+        let fixture=std::env::var("MREADER_COVER_BACKUP_FIXTURE").expect("Set the captured backup path");
+        let id=std::env::var("MREADER_COVER_TEST_BOOK").expect("Set the temporary test manga identity");
+        let expected=std::env::var("MREADER_COVER_EXPECTED_SHA").expect("Set the phone cover SHA256");
+        let root=std::env::temp_dir().join(format!("mreader-cover-backup-{}",uuid::Uuid::new_v4()));
+        let core=Core::new(root.clone()).unwrap();let data=std::fs::read(fixture).unwrap();
+        let restored=restore_backup_data(&core,&data).unwrap();let book=restored.books.iter().find(|b|b.id==id).unwrap().clone();
+        assert_eq!(book.title,"Mreader cover sync test");assert!(!custom_cover::path(&root,&id).exists(),"Restored image must come from portable backup data");
+        let bytes=tauri::async_runtime::block_on(cover_bytes(Arc::new(core),book)).unwrap();assert_eq!(format!("{:x}",Sha256::digest(&bytes)),expected);
+        let reopened=Arc::new(Core::new(root.clone()).unwrap());let book=reopened.store.book(&id).unwrap();let bytes=tauri::async_runtime::block_on(cover_bytes(reopened,book)).unwrap();assert_eq!(format!("{:x}",Sha256::digest(&bytes)),expected);
+        println!("Backup restore: portable image hash matched the phone after restore and database reopen.");std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn reimport_preserves_progress_and_database_survives_restart() {

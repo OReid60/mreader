@@ -15,6 +15,9 @@
 -keep class app.cash.quickjs.** { *; }
 -keep class org.brotli.** { *; }
 -keep class io.github.zstd.** { *; }
+# JNI initializes both compressor and decompressor classes by their original
+# names, even when OkHttp only uses decompression. R8 cannot see those lookups.
+-keep class com.squareup.zstd.** { *; }
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
 #

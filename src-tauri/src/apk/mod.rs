@@ -285,7 +285,7 @@ impl Engine {
         self.ready(id).await?;
         let v = self
             .runtime
-            .call(json!({"operation":"chapters","sourceId":id,"url":b.remote_id,"title":b.title}))
+            .call(json!({"operation":"chapters","sourceId":id,"url":canonical_mangafire_url(id,&b.remote_id),"title":b.title}))
             .await?;
         let rows = v["chapters"]
             .as_array()
@@ -296,7 +296,8 @@ impl Engine {
                 Ok(Chapter {
                     id: required(c, "url")?,
                     title: string(c, "title"),
-                    number: string(c, "number"),
+                    number: chapter_number(c),
+                    source_memo: c.get("memo").and_then(Value::as_object).cloned(),
                     group: string(c, "group"),
                     pages: 0,
                     path: String::new(),
@@ -315,7 +316,8 @@ impl Engine {
     pub async fn manifest(&self, b: &Book, c: &Chapter) -> Result<crate::sources::Manifest> {
         let id = b.source.strip_prefix("apk:").ok_or("Invalid APK source")?;
         self.ready(id).await?;
-        let v=self.runtime.call(json!({"operation":"pages","sourceId":id,"url":c.id,"title":c.title,"mangaUrl":b.remote_id,"mangaTitle":b.title})).await?;
+        if id=="6084907896154116083" && c.id.contains("/volume/"){return Err("This saved MangaFire volume is no longer offered by the current extension. Choose an individual chapter. Your saved volume progress has been kept.".into());}
+        let v=self.runtime.call(json!({"operation":"pages","sourceId":id,"url":c.id,"title":c.title,"mangaUrl":canonical_mangafire_url(id,&b.remote_id),"mangaTitle":b.title,"memo":c.source_memo})).await?;
         let rows = v.as_array().ok_or("Invalid extension page list")?;
         if rows.is_empty() {
             return Err("This extension returned no readable pages".into());
@@ -331,11 +333,12 @@ impl Engine {
     pub async fn image(&self, source: &str, url: &str) -> Result<Vec<u8>> {
         let id = source.strip_prefix("apk:").ok_or("Invalid APK source")?;
         self.ready(id).await?;
-        let page = if url.starts_with('{') {
+        let mut page = if url.starts_with('{') {
             serde_json::from_str::<Value>(url).map_err(|e| e.to_string())?
         } else {
             json!({"imageUrl":url,"url":"","index":0})
         };
+        if let Some(url)=page["mangaUrl"].as_str(){page["mangaUrl"]=json!(canonical_mangafire_url(id,url));}
         self.runtime
             .image(json!({"operation":"image","sourceId":id,"page":page}))
             .await
@@ -343,6 +346,15 @@ impl Engine {
 }
 fn string(v: &Value, k: &str) -> String {
     v[k].as_str().unwrap_or_default().to_string()
+}
+fn chapter_number(v:&Value)->String{
+ let raw=string(v,"number");if raw.parse::<f64>().is_ok_and(|n|n.is_finite()&&n>=0.){return raw}
+ let title=string(v,"title").to_ascii_lowercase();
+ for marker in ["chapter","ch."]{if let Some(at)=title.rfind(marker){
+  let tail=title[at+marker.len()..].trim_start_matches(|c:char|c.is_ascii_whitespace()||matches!(c,':'|'#'|'-'));
+  let number:String=tail.chars().take_while(|c|c.is_ascii_digit()||*c=='.').collect();let number=number.trim_end_matches('.');
+  if number.parse::<f64>().is_ok_and(|n|n.is_finite()&&n>=0.){return number.into()}
+ }}String::new()
 }
 fn required(v: &Value, k: &str) -> Result<String> {
     let s = string(v, k);
@@ -375,11 +387,16 @@ fn book(id: &str, v: &Value) -> Result<Book> {
             .collect(),
         chapters: vec![],
         favorite: false,
+        custom_cover: None,
     })
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]fn infers_missing_numbers_without_changing_identity(){
+      for (title,expected) in [("Kagurabachi Chapter 143","143"),("Chapter 12.5","12.5"),("Ch. 7 - Extra","7"),("Volume 20 extra","")]{assert_eq!(chapter_number(&json!({"title":title,"number":"-1.0"})),expected);}
+      assert_eq!(chapter_number(&json!({"title":"Chapter 4","number":"3.5"})),"3.5");
+    }
     #[test]
     fn portable_identity_and_cover_do_not_contain_runtime_row_ids() {
         let a=book("1998944621602463790",&json!({"url":"#/titles/100274","title":"Kagurabachi","cover":"/api/v1/manga/3/thumbnail"})).unwrap();
@@ -441,5 +458,27 @@ mod tests {
             drop(engine);
             let _ = std::fs::remove_dir_all(dir);
         });
+    }
+}
+
+pub(crate) fn canonical_mangafire_url(source:&str,url:&str)->String {
+    if source=="6084907896154116083" {
+        if let Some((slug,id))=url.strip_prefix("/manga/").and_then(|s|s.rsplit_once('.')) {
+            if !slug.is_empty() && !id.is_empty() && slug.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_') && id.bytes().all(|b|b.is_ascii_alphanumeric()) {
+                return format!("/title/{id}-{slug}");
+            }
+        }
+    }
+    url.to_owned()
+}
+#[cfg(test)]
+mod url_repair_tests {
+    #[test]
+    fn repairs_only_the_verified_mangafire_legacy_format(){
+        use super::canonical_mangafire_url as fix;
+        assert_eq!(fix("6084907896154116083","/manga/choujin-xx.oj985"),"/title/oj985-choujin-xx");
+        assert_eq!(fix("6084907896154116083","/title/oj985-choujin-xx"),"/title/oj985-choujin-xx");
+        assert_eq!(fix("other","/manga/choujin-xx.oj985"),"/manga/choujin-xx.oj985");
+        assert_eq!(fix("6084907896154116083","/manga/../../bad.x"),"/manga/../../bad.x");
     }
 }

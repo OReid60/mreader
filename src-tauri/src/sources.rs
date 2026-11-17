@@ -469,6 +469,7 @@ pub fn parse_md_book(v: &Value) -> Book {
             .unwrap_or_default(),
         chapters: Vec::new(),
         favorite: false,
+        custom_cover: None,
     }
 }
 fn parse_md_chapter(v: &Value) -> Chapter {
@@ -486,6 +487,7 @@ fn parse_md_chapter(v: &Value) -> Chapter {
         path: String::new(),
         downloaded: false,
         group,
+        source_memo:None,
     }
 }
 fn parse_komga_book(v: &Value) -> Book {
@@ -503,6 +505,7 @@ fn parse_komga_book(v: &Value) -> Book {
         tags: Vec::new(),
         chapters: Vec::new(),
         favorite: false,
+        custom_cover: None,
     }
 }
 fn parse_komga_chapter(v: &Value) -> Chapter {
@@ -516,7 +519,7 @@ fn parse_komga_chapter(v: &Value) -> Chapter {
         pages: v["media"]["pagesCount"].as_u64().unwrap_or(0) as usize,
         path: String::new(),
         downloaded: false,
-        group: "Komga".into(),
+        source_memo:None,group: "Komga".into(),
     }
 }
 #[cfg(test)]

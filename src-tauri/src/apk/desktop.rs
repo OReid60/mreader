@@ -29,28 +29,38 @@ pub struct Desktop {
 }
 impl Drop for Desktop {
     fn drop(&mut self) {
+        crate::shutdown_trace::event("runtime.drop.enter");
         if let Ok(server) = self.server.get_mut() {
             if let Some(server) = server.as_mut() {
                 let _ = server.child.kill();
+                crate::shutdown_trace::event("runtime.drop.wait");
                 let _ = server.child.wait();
             }
         }
+        crate::shutdown_trace::event("runtime.drop.return");
     }
 }
 impl Desktop {
     pub fn stop(&self) {
+        crate::shutdown_trace::event("runtime.stop.lock_wait");
         if let Ok(mut server) = self.server.lock() {
+            crate::shutdown_trace::event("runtime.stop.lock_acquired");
             if let Some(mut server) = server.take() {
+                crate::shutdown_trace::event("runtime.stop.kill");
                 let _ = server.child.kill();
+                crate::shutdown_trace::event("runtime.stop.wait");
                 let _ = server.child.wait();
+                crate::shutdown_trace::event("runtime.stop.child_reaped");
             }
         }
+        crate::shutdown_trace::event("runtime.stop.return");
     }
     pub fn set_dir(&self, dir: &Path) -> Result<()> {
         *self.dir.lock().map_err(|e| e.to_string())? = Some(dir.join("runtime"));
         Ok(())
     }
     async fn start(&self) -> Result<Connection> {
+        crate::shutdown_trace::event("runtime.start.enter");
         let _guard = self.gate.lock().await;
         if let Some(server) = self.server.lock().map_err(|e| e.to_string())?.as_mut() {
             if server
@@ -120,6 +130,7 @@ impl Desktop {
         let mut child = command
             .spawn()
             .map_err(|e| format!("Cannot start APK runtime: {e}"))?;
+        crate::shutdown_trace::event("runtime.start.child_spawned");
         let started = std::time::Instant::now();
         while started.elapsed() < std::time::Duration::from_secs(60) {
             if child.try_wait().map_err(|e| e.to_string())?.is_some() {
@@ -169,6 +180,9 @@ impl Desktop {
                 Ok(json!({"manga":data["manga"],"chapters":data["chapters"]}))
             }
             "pages" => {
+                if args["sourceId"].as_str()==Some("6084907896154116083") && args["url"].as_str().is_some_and(|u|u.contains("/volume/")) {
+                    return Err("This saved MangaFire volume is no longer offered by the current extension. Choose an individual chapter from the refreshed list. Your saved volume reading progress has been kept.".into());
+                }
                 let id=manga_id(&c,&args["sourceId"],args["mangaUrl"].as_str().unwrap_or(""),args["mangaTitle"].as_str().unwrap_or("")).await?;
                 let data=chapters(&c,id).await?;
                 let chapter=data["chapters"].as_array().and_then(|rows|rows.iter().find(|r|r["url"]==args["url"])).ok_or("This chapter no longer exists at the source")?;
@@ -204,12 +218,32 @@ impl Desktop {
                 .ok_or("Refresh this title to load its extension cover on this device")?;
             format!("/api/v1/manga/{id}/thumbnail")
         };
+        recover_cover_image(&c,&path,&args).await
+    }
+}
+async fn recover_cover_image(c:&Connection,path:&str,args:&Value)->Result<Vec<u8>>{
+        let result=runtime_image(c,path).await;
+        // A saved row can retain an expired thumbnail while Browse returns fresh art.
+        // Search once, then resolve the same source URL; never substitute a title match.
+        if result.is_err() {
+            if let Some(url)=args["page"]["mangaUrl"].as_str(){
+                let title=args["page"]["mangaTitle"].as_str().unwrap_or("");
+                if !title.is_empty(){
+                    search(c,&json!({"sourceId":args["sourceId"],"query":title,"page":1})).await?;
+                    let id=manga_id(c,&args["sourceId"],url,title).await?;
+                    return runtime_image(c,&format!("/api/v1/manga/{id}/thumbnail")).await;
+                }
+            }
+        }
+        result
+}
+async fn runtime_image(c:&Connection,path:&str)->Result<Vec<u8>>{
         if !path.starts_with("/api/") || path.contains("://") || path.contains("..") {
             return Err("Invalid local runtime image path".into());
         }
         let response = client()?
             .get(format!("{}{path}", c.url))
-            .basic_auth("mreader", Some(c.password))
+            .basic_auth("mreader", Some(&c.password))
             .send()
             .await
             .map_err(|e| e.to_string())?
@@ -225,7 +259,6 @@ impl Desktop {
             bytes.extend_from_slice(&chunk);
         }
         Ok(bytes)
-    }
 }
 fn client() -> Result<&'static reqwest::Client> {
     static CLIENT: std::sync::OnceLock<std::result::Result<reqwest::Client, String>> =
@@ -242,6 +275,27 @@ fn client() -> Result<&'static reqwest::Client> {
         .as_ref()
         .map_err(Clone::clone)
 }
+#[cfg(test)]mod cover_tests{
+ use super::*;
+ #[test]fn failed_saved_thumbnail_refreshes_exact_source_once(){
+  use std::{io::Read,net::TcpListener};
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let address=listener.local_addr().unwrap();
+  let server=std::thread::spawn(move||{for step in 0..4{
+   let (mut socket,_)=listener.accept().unwrap();socket.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+   let mut bytes=Vec::new();let mut buffer=[0;4096];let end=loop{let n=socket.read(&mut buffer).unwrap();assert!(n>0);bytes.extend_from_slice(&buffer[..n]);if let Some(i)=bytes.windows(4).position(|v|v==b"\r\n\r\n"){break i+4}};
+   let header=String::from_utf8_lossy(&bytes[..end]).to_lowercase();let length=header.lines().find_map(|l|l.strip_prefix("content-length: ").and_then(|s|s.parse::<usize>().ok())).unwrap_or(0);
+   while bytes.len()<end+length{let n=socket.read(&mut buffer).unwrap();assert!(n>0);bytes.extend_from_slice(&buffer[..n]);}
+   let (status,body)=match step{
+    0=>{assert!(header.starts_with("get /api/v1/manga/7/thumbnail "));("404 Not Found","missing".into())},
+    1=>{let request:Value=serde_json::from_slice(&bytes[end..end+length]).unwrap();assert_eq!(request["variables"]["i"]["source"],"fixture-source");assert_eq!(request["variables"]["i"]["query"],"Fixture title");("200 OK",json!({"data":{"fetchSourceManga":{"hasNextPage":false,"mangas":[{"id":7,"url":"/exact","title":"Fixture title","thumbnailUrl":"https://example.test/new.jpg"}]}}}).to_string())},
+    2=>{let request:Value=serde_json::from_slice(&bytes[end..end+length]).unwrap();assert_eq!(request["variables"]["c"]["url"],"/exact");assert_eq!(request["variables"]["c"]["sourceId"],"fixture-source");("200 OK",json!({"data":{"mangas":{"nodes":[{"id":7}]}}}).to_string())},
+    _=>{assert!(header.starts_with("get /api/v1/manga/7/thumbnail "));("200 OK","fresh-cover".into())}
+   };write!(socket,"HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
+  }});
+  let c=Connection{url:format!("http://{address}"),password:"fixture-only".into()};
+  let result=tauri::async_runtime::block_on(recover_cover_image(&c,"/api/v1/manga/7/thumbnail",&json!({"sourceId":"fixture-source","page":{"mangaUrl":"/exact","mangaTitle":"Fixture title"}}))).unwrap();assert_eq!(result,b"fresh-cover");server.join().unwrap();
+ }
+}
 async fn gql(c: &Connection, query: &str, variables: Value) -> Result<Value> {
     let data: Value = client()?
         .post(format!("{}/api/graphql", c.url))
@@ -257,6 +311,9 @@ async fn gql(c: &Connection, query: &str, variables: Value) -> Result<Value> {
         .map_err(|e| e.to_string())?;
     if let Some(errors) = data["errors"].as_array() {
         if !errors.is_empty() {
+            if errors.iter().any(|e|e["message"].as_str().unwrap_or("").contains("Cloudflare bypass currently disabled")) {
+                return Err("This source requires Cloudflare verification that the desktop extension runtime cannot currently complete. A working website does not mean the extension can read it. You can flag the extension as not working in Settings → Sources, or choose another installed source. Your library and progress are unchanged.".into());
+            }
             return Err(errors
                 .iter()
                 .map(|e| e["message"].as_str().unwrap_or("Extension runtime error"))
@@ -280,6 +337,8 @@ async fn search(c: &Connection, args: &Value) -> Result<Value> {
     )
 }
 async fn manga_id(c: &Connection, source: &Value, url: &str, title: &str) -> Result<i64> {
+    let canonical=super::canonical_mangafire_url(source.as_str().unwrap_or(""),url);
+    let url=canonical.as_str();
     let query = "query($c:MangaConditionInput!){mangas(condition:$c,first:1){nodes{id}}}";
     let vars = json!({"c":{"sourceId":source,"url":url}});
     let data = gql(c, query, vars.clone()).await?;

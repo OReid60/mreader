@@ -26,6 +26,10 @@ jobs:
           mkdir -p dist
           cp index.html app.js features.js mobile.js style.css dist/
           cp -R vendor dist/
+      - name: Fetch matching bundled Android APK
+        run: bash scripts/prepare-mobile-apk.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
       - run: bash scripts/build-linux.sh
         env:
@@ -43,3 +47,23 @@ jobs:
     uses: ./.github/workflows/verify-linux.yml
     with:
       source_run: ${{ github.run_id }}
+
+  publish-linux:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, verify-packages]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mreader-linux
+          path: packages
+      - name: Publish verified Linux packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          mv packages/SHA256SUMS packages/SHA256SUMS-linux
+          gh release upload "$RELEASE_TAG" packages/* --clobber

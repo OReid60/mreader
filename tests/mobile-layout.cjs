@@ -22,7 +22,7 @@ const { pathToFileURL } = require('node:url');
       window.__TAURI__ = {
         core: { invoke: async (name,args) => {
           if (name === 'snapshot') return snapshot();
-          if (name === 'mobile_download_start')return {url:'https://mreader-android-download-20261115.supernova-pp1457.chatgpt.site/',hosted:true,svg:'<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="black"/></svg>',addresses:['192.168.1.2'],address:'192.168.1.2',expiresAt:Date.now()+600000,version:'0.3.9',bytes:15779968};
+          if (name === 'mobile_download_start'){window.localCodeCounter=(window.localCodeCounter||0)+1;return {url:'http://192.168.1.2:1234/token'+window.localCodeCounter+'/',svg:'<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="black"/></svg>',addresses:['192.168.1.2'],address:'192.168.1.2',expiresAt:Date.now()+300000,version:'0.3.19',bytes:15943808};}
           if (name === 'mobile_download_stop')return;
           if (name === 'save_settings') {Object.assign(settings,args.settings);sessionStorage.setItem('fixtureSettings',JSON.stringify(settings));return snapshot();}
           if(name==='download_queue')return [];
@@ -81,7 +81,7 @@ const { pathToFileURL } = require('node:url');
     assert.equal(await phone.locator('.mobile-bottom button').count(),5);
     assert.equal(await phone.locator('.sidebar').count(),0);
     assert.equal(await phone.locator('.hero').count(),0);
-    assert.equal(await phone.locator('.mobile-categories button').allTextContents().then(x=>x.join(',')),'Default,nsfw');
+    assert.equal(await phone.locator('.mobile-categories button').allTextContents().then(x=>x.join(',')),'Default,nsfw,Favorites');
     const columns = await phone.locator('.mobile-grid').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length);
     assert.equal(columns,3);
     assert(await phone.evaluate(()=>document.documentElement.scrollWidth <= innerWidth));
@@ -92,6 +92,7 @@ const { pathToFileURL } = require('node:url');
     await phone.locator('[data-action="close-detail"]').click();
     assert.equal(await phone.locator('.mobile-grid .card').count(),5);
     await phone.locator('[data-action="mobile-category"][data-category="nsfw"]').click();
+    await phone.waitForFunction(()=>state.mobileCategory==='nsfw'&&!categorySlide);
     assert.equal(await phone.locator('.mobile-grid .card').count(),1);
     assert.equal(await phone.locator('.mobile-grid .card h3').textContent(),'Library title 1');
     await phone.evaluate(()=>navigate('Settings'));
@@ -104,6 +105,7 @@ const { pathToFileURL } = require('node:url');
     await phone.locator('[data-action="mobile-close-sheet"]').click();
     await phone.evaluate(()=>navigate('Library'));
     await phone.locator('[data-action="mobile-category"][data-category="nsfw"]').click();
+    await phone.waitForFunction(()=>state.mobileCategory==='nsfw'&&!categorySlide);
     await phone.locator('.card[data-id="test:0"]').click();
     await phone.getByRole('button',{name:'Category: nsfw',exact:true}).click();
     await phone.locator('#mobile-sheet').getByRole('button',{name:'Action & Adventure',exact:true}).click();
@@ -220,12 +222,14 @@ const { pathToFileURL } = require('node:url');
     await desktop.getByRole('button',{name:'Generate download code',exact:true}).click();
     await desktop.waitForFunction(()=>!!featureState.mobileDownload);
     assert.equal(await desktop.locator('.mobile-download-code svg').count(),1);
-    assert.equal(await desktop.getByRole('textbox',{name:'Android APK download link',exact:true}).inputValue(),'https://mreader-android-download-20261115.supernova-pp1457.chatgpt.site/');
+    assert((await desktop.locator('#mobile-download-link').innerText()).startsWith('http://192.168.1.2:1234/'));
+    assert((await desktop.locator('#mobile-download-link').getAttribute('href')).startsWith('http://192.168.1.2:1234/'));
+    assert(!(await desktop.locator('.mobile-install-instructions').innerText()).includes('supernova-pp1457'));
     await desktop.screenshot({path:path.join(output,'desktop-mobile-download.png')});
-    await desktop.getByRole('button',{name:'Refresh code',exact:true}).click();
-    await desktop.waitForFunction(()=>featureState.mobileDownload?.hosted);
+    const oldLocalLink=await desktop.locator('#mobile-download-link').getAttribute('href');await desktop.getByRole('button',{name:'Regenerate download code',exact:true}).click();
+    await desktop.waitForFunction(old=>featureState.mobileDownload?.url!==old,oldLocalLink);await desktop.evaluate(()=>{featureState.mobileDownload.expiresAt=Date.now()-1;tickMobileDownload();});assert.equal(await desktop.locator('#mobile-download-link').count(),0);assert(await desktop.getByRole('button',{name:'Regenerate download code',exact:true}).isVisible());await desktop.getByRole('button',{name:'Regenerate download code',exact:true}).click();await desktop.waitForSelector('#mobile-download-link');
     assert.equal(await desktop.locator('#mobile-download-address').count(),0);
-    assert.equal(await desktop.getByRole('button',{name:'Stop sharing',exact:true}).count(),0);
+    assert.equal(await desktop.getByRole('button',{name:'Stop sharing',exact:true}).count(),1);
     await desktop.getByRole('tab',{name:'General',exact:true}).click();
     await desktop.getByRole('combobox',{name:'Startup page',exact:true}).selectOption('History');
     await desktop.locator('#settings-form button[type="submit"],#settings-form button').last().click();
@@ -256,6 +260,18 @@ const { pathToFileURL } = require('node:url');
     assert(await phone.getByRole('button',{name:'Remove from synced sources'}).isVisible());
     assert(await phone.getByText('Source download unavailable; retry sync',{exact:true}).isVisible());
     for(const device of [phone,desktop])await device.evaluate(()=>{featureState.cloud.signedIn=false;clearTimeout(featureState.syncTimer);});
+    for(const device of [phone,desktop]){
+      await device.evaluate(async()=>{state.dataDir='PRIVATE_DATA_LOCATION';state.settings.komgaUrl='https://private-server.invalid';state.settings.komgaUser='PRIVATE_SERVER_USER';featureState.settingsTab='general';await navigate('Settings');});
+      assert.equal(await device.locator('[name="komgaUrl"],[name="komgaUser"],[name="komgaPassword"],.app-data-location,#cloud-config-form').count(),0);
+      for(const section of ['general','account','sources','storage']){
+        await device.evaluate(section=>{featureState.settingsTab=section;render();},section);
+        const text=await device.locator('#app').innerText();
+        for(const hidden of ['PRIVATE_DATA_LOCATION','PRIVATE_SERVER_USER','private-server.invalid','Managed service setup','compatibility runtime',' · API ','fixture.publisher','Rust core','WebView2'])assert(!text.includes(hidden),hidden+' should not appear in Settings');
+      }
+      await device.evaluate(()=>{featureState.settingsTab='general';render();});
+      await device.locator('#settings-form button[type="submit"]').click();
+      await device.waitForFunction(()=>state.settings.komgaUrl==='https://private-server.invalid'&&state.settings.komgaUser==='PRIVATE_SERVER_USER');
+    }
     for (const readerPage of [phone, await open(900,true)]) {
       await readerPage.evaluate(() => {
         window.MreaderChrome = { setImmersive(value) { window.lastImmersive = value; } };

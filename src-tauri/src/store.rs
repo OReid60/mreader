@@ -7,8 +7,18 @@ impl Store {
     pub fn merge(&self, books: &[Book], progress: &[Progress], settings: &Settings) -> Result<()> {
         let mut db = self.0.lock().map_err(|e| e.to_string())?;
         let tx = db.transaction().map_err(|e| e.to_string())?;
-        for b in books {
-            tx.execute("INSERT INTO books(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data",params![b.id,serde_json::to_string(b).map_err(|e|e.to_string())?]).map_err(|e|e.to_string())?;
+        for incoming in books {
+            let mut b=incoming.clone();
+            if let Some(cover)=&b.custom_cover{cover.validate()?;}
+            let existing:Option<String>=tx.query_row("SELECT data FROM books WHERE id=?1",[&b.id],|row|row.get(0)).ok();
+            if let Some(text)=existing {
+                let old:Book=serde_json::from_str(&text).map_err(|e|e.to_string())?;
+                crate::custom_cover::merge(&mut b.custom_cover,&old.custom_cover);
+                for saved in old.chapters.into_iter().filter(|c|c.downloaded){
+                    if let Some(chapter)=b.chapters.iter_mut().find(|c|c.id==saved.id){*chapter=saved;}else{b.chapters.push(saved);}
+                }
+            }
+            tx.execute("INSERT INTO books(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data",params![b.id,serde_json::to_string(&b).map_err(|e|e.to_string())?]).map_err(|e|e.to_string())?;
             tx.execute(
                 "INSERT OR REPLACE INTO sync_meta VALUES('book',?1,?2)",
                 params![b.id, now_ms()],
@@ -16,7 +26,8 @@ impl Store {
             .map_err(|e| e.to_string())?;
         }
         for p in progress {
-            tx.execute("INSERT INTO progress VALUES(?1,?2,?3,?4,?5) ON CONFLICT(book,chapter) DO UPDATE SET page=excluded.page,completed=excluded.completed,updated=excluded.updated",params![p.book_id,p.chapter_id,p.page,p.completed,p.updated]).map_err(|e|e.to_string())?;
+            let stamp=if p.updated<1_000_000_000_000 {p.updated.saturating_mul(1000)}else{p.updated};
+            tx.execute("INSERT INTO progress VALUES(?1,?2,?3,?4,?5) ON CONFLICT(book,chapter) DO UPDATE SET page=CASE WHEN excluded.updated=CASE WHEN progress.updated<1000000000000 THEN progress.updated*1000 ELSE progress.updated END THEN MAX(progress.page,excluded.page) ELSE excluded.page END,completed=MAX(progress.completed,excluded.completed),updated=excluded.updated WHERE excluded.updated>=CASE WHEN progress.updated<1000000000000 THEN progress.updated*1000 ELSE progress.updated END",params![p.book_id,p.chapter_id,p.page,p.completed,stamp]).map_err(|e|e.to_string())?;
         }
         tx.execute(
             "INSERT INTO settings VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
@@ -136,7 +147,13 @@ impl Store {
     pub fn put(&self, b: &Book) -> Result<()> {
         let mut db = self.0.lock().map_err(|e| e.to_string())?;
         let tx = db.transaction().map_err(|e| e.to_string())?;
-        tx.execute("INSERT INTO books(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data",params![b.id,serde_json::to_string(b).map_err(|e|e.to_string())?]).map_err(|e|e.to_string())?;
+        let mut b=b.clone();
+        if let Some(cover)=&b.custom_cover{cover.validate()?;}
+        if let Ok(text)=tx.query_row("SELECT data FROM books WHERE id=?1",[&b.id],|r|r.get::<_,String>(0)){
+            let old:Book=serde_json::from_str(&text).map_err(|e|e.to_string())?;
+            crate::custom_cover::merge(&mut b.custom_cover,&old.custom_cover);
+        }
+        tx.execute("INSERT INTO books(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data",params![b.id,serde_json::to_string(&b).map_err(|e|e.to_string())?]).map_err(|e|e.to_string())?;
         tx.execute(
             "INSERT OR REPLACE INTO sync_meta VALUES('book',?1,?2)",
             params![b.id, now_ms()],
@@ -263,6 +280,7 @@ impl Store {
         let mut db = self.0.lock().map_err(|e| e.to_string())?;
         let tx = db.transaction().map_err(|e| e.to_string())?;
         for (book, updated) in books {
+            if let Some(cover)=&book.custom_cover{cover.validate()?;}
             let local_stamp: i64 = tx
                 .query_row(
                     "SELECT updated FROM sync_meta WHERE kind='book' AND key=?1",
@@ -296,7 +314,7 @@ impl Store {
         }
         for p in progress {
             tx.execute(
-                "INSERT INTO progress VALUES(?1,?2,?3,?4,?5) ON CONFLICT(book,chapter) DO UPDATE SET page=excluded.page,completed=MAX(progress.completed,excluded.completed),updated=excluded.updated WHERE excluded.updated>=CASE WHEN progress.updated<1000000000000 THEN progress.updated*1000 ELSE progress.updated END",
+                "INSERT INTO progress VALUES(?1,?2,?3,?4,?5) ON CONFLICT(book,chapter) DO UPDATE SET page=CASE WHEN excluded.updated=CASE WHEN progress.updated<1000000000000 THEN progress.updated*1000 ELSE progress.updated END THEN MAX(progress.page,excluded.page) ELSE excluded.page END,completed=MAX(progress.completed,excluded.completed),updated=excluded.updated WHERE excluded.updated>=CASE WHEN progress.updated<1000000000000 THEN progress.updated*1000 ELSE progress.updated END",
                 params![p.book_id, p.chapter_id, p.page, p.completed, p.updated],
             )
             .map_err(|e| e.to_string())?;
@@ -343,9 +361,9 @@ mod tests {
         let s = Store::open(Path::new(":memory:")).unwrap();
         let mut chapters: Vec<Chapter> = (1..=20).rev().map(|n| Chapter {
             id: n.to_string(), number: n.to_string(), title: String::new(), pages: 8,
-            path: String::new(), downloaded: false, group: String::new(),
+            path: String::new(), downloaded: false, source_memo:None,group: String::new(),
         }).collect();
-        chapters.push(Chapter { id:"extra".into(), number:"Extra".into(), title:String::new(), pages:8, path:String::new(),downloaded:false,group:String::new() });
+        chapters.push(Chapter { id:"extra".into(), number:"Extra".into(), title:String::new(), pages:8, path:String::new(),downloaded:false,source_memo:None,group:String::new() });
         let book: Book = serde_json::from_value(serde_json::json!({"id":"b","title":"Test","source":"local","chapters":chapters})).unwrap();
         let mut p = Progress { book_id:"b".into(),chapter_id:"11".into(),page:0,completed:false,updated:1000 };
         s.save_reading_progress(&book,&p).unwrap();
@@ -359,6 +377,22 @@ mod tests {
         let reread=s.progress().unwrap().into_iter().find(|r|r.chapter_id=="3").unwrap();
         assert_eq!(reread.page,2);assert!(reread.completed);
         assert_eq!(s.progress().unwrap().len(),11);
+    }
+    #[test]
+    fn backup_restore_preserves_newer_progress_and_downloads() {
+        let s=Store::open(Path::new(":memory:")).unwrap();
+        let saved:Book=serde_json::from_value(serde_json::json!({"id":"b","title":"Test","source":"apk:1","chapters":[{"id":"c","number":"1","title":"Chapter","pages":20,"path":"saved-pages","downloaded":true,"group":""}]})).unwrap();
+        s.put(&saved).unwrap();
+        let stamp=now_ms();let current=Progress{book_id:"b".into(),chapter_id:"c".into(),page:15,completed:true,updated:stamp};
+        s.save_progress(&current).unwrap();
+        let mut old=current.clone();old.page=2;old.updated-=100;old.completed=false;
+        let mut backup=saved.clone();backup.chapters.clear();
+        s.merge(&[backup],&[old],&Settings::default()).unwrap();
+        assert_eq!(s.progress().unwrap()[0].page,15);assert!(s.progress().unwrap()[0].completed);
+        assert_eq!(s.book("b").unwrap().chapters[0].path,"saved-pages");
+        let mut reread=current;reread.page=1;reread.updated+=100;
+        s.merge(&[],&[reread],&Settings::default()).unwrap();
+        assert_eq!(s.progress().unwrap()[0].page,1);assert!(s.progress().unwrap()[0].completed);
     }
     #[test]
     fn progress_upserts_and_settings_roundtrip() {

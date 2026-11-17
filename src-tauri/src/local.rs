@@ -257,7 +257,7 @@ impl LocalReader {
                 pages: idx.len(),
                 path: canonical.clone(),
                 downloaded: true,
-                group: "Local file".into(),
+                source_memo:None,group: "Local file".into(),
             })
         }
         if chapters.is_empty() {
@@ -275,7 +275,7 @@ impl LocalReader {
             hash.update(chapters[0].id.as_bytes());
             format!("local:{:x}", hash.finalize())
         };
-        Ok(Book{id,title:path.file_stem().unwrap_or_default().to_string_lossy().to_string(),author:"Local library".into(),description:"Imported from your computer. Original files remain in place; keep them available at their imported location.".into(),cover:String::new(),source:"local".into(),remote_id:String::new(),path:canonical,status:"Local".into(),tags:vec!["Offline".into()],chapters,favorite:false})
+        Ok(Book{id,title:path.file_stem().unwrap_or_default().to_string_lossy().to_string(),author:"Local library".into(),description:"Imported from your computer. Original files remain in place; keep them available at their imported location.".into(),cover:String::new(),source:"local".into(),remote_id:String::new(),path:canonical,status:"Local".into(),tags:vec!["Offline".into()],chapters,favorite:false,custom_cover:None})
     }
     fn scan(&self, path: &Path, out: &mut Vec<Chapter>, depth: usize) -> Result<()> {
         if depth > 4 {
@@ -303,7 +303,7 @@ impl LocalReader {
                 pages: idx.len(),
                 path: key.to_string(),
                 downloaded: true,
-                group: "Image folder".into(),
+                source_memo:None,group: "Image folder".into(),
             })
         }
         for e in entries {

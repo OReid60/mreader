@@ -144,6 +144,12 @@ function mountReaderStrip(reader, root) {
     if (section.pending) return section.pending;
     section.pending = enqueue(async () => {
       if (!force && !near(section.element, root.clientHeight)) return section;
+      if(!navigator.onLine && reader.book.source!=='local' && !chapter.downloaded && !(chapter.id===reader.chapter.id&&initializing)){
+        const retry=section.element.querySelector('button');
+        if(retry){retry.disabled=false;retry.textContent=`${chapter.number?'Chapter '+chapter.number:chapter.title||'Chapter'} · Not downloaded on this device`;}
+        if(force){const error=Error('This chapter is not downloaded on this device. Connect to download it before reading offline.');error.offlineChapter=true;throw error;}
+        return section;
+      }
       const meta = chapter.id === reader.chapter.id && initializing
         ? {pages:reader.total, pdf:reader.pdf}
         : await api('open_chapter', {bookId:reader.book.id, chapterId:chapter.id});
@@ -191,7 +197,7 @@ function mountReaderStrip(reader, root) {
     }, force).catch(error => {
       if (active()) {
         const retry = section.element.querySelector('button');
-        if (retry) { retry.disabled=false; retry.textContent=`Chapter ${chapter.number} · Retry loading`; retry.title=String(error); }
+        if (retry&&!error.offlineChapter) { retry.disabled=false; retry.textContent=`Chapter ${chapter.number} · Retry loading`; retry.title=String(error); }
         report(error);
       }
       throw error;
@@ -350,12 +356,17 @@ async function renderMobilePdf(reader, canvas) {
 function useMobileLayout() {
   return isAndroid() || (globalThis.innerWidth || globalThis.window?.innerWidth || 1200) <= 760;
 }
+function chapterOrder(){try{return localStorage.getItem('mreader:chapter-order')==='desc'?'desc':'asc';}catch{return 'asc';}}
+function orderedChapters(book){const chapters=[...book.chapters];chapters.sort((a,b)=>{const an=a.number?.trim()!==''?Number(a.number):NaN,bn=b.number?.trim()!==''?Number(b.number):NaN;return Number.isFinite(an)&&Number.isFinite(bn)?an-bn:0;});return chapterOrder()==='desc'?chapters.reverse():chapters;}
+function mangaDownloadBadge(book){return book.chapters.some(c=>c.downloaded)?button('manga-download-info',icon('downloads'),'secondary manga-download-badge',`data-id="${esc(book.id)}" aria-label="Downloaded chapters" title="Downloaded chapters"`):'';}
 function bookCategory(book) {
   const category = book.tags?.find(tag => tag.startsWith('mreader:category:'))?.slice('mreader:category:'.length);
   return category && (!state.categories || state.categories.includes(category)) ? category : 'Default';
 }
+function matchesLibraryCategory(book,name){return name==='Favorites'?book.favorite:bookCategory(book)===name;}
+function libraryCategoryNames(){return [...new Set([...(state.categories||['Default','nsfw']),'Favorites'])];}
 function categoryTabs(mobile = false) {
-  const names = state.categories || ['Default','nsfw'];
+  const names = libraryCategoryNames();
   return `<nav class="${mobile ? 'mobile-categories' : 'category-tabs'}" aria-label="Library categories">${names.map(name => `<button data-action="mobile-category" data-category="${esc(name)}" class="${(state.mobileCategory || 'Default') === name ? 'active' : ''}">${esc(name)}</button>`).join('')}</nav>`;
 }
 function categoryLayer(title, content) {
@@ -400,12 +411,12 @@ function renderMobileApp(data, updateCount) {
   document.body.classList.add('mobile-layout');
   state.mobileCategory ||= 'Default';
   const library = state.page === 'Library';
-  const shown = library ? data.filter(book => bookCategory(book) === state.mobileCategory) : data;
-  const pages = [['Library','library'],['Updates','settings'],['History','history'],['Browse','browse'],['Settings','more']];
+  const shown = library && navigator.onLine!==false ? data.filter(book => matchesLibraryCategory(book,state.mobileCategory)) : data;
+  const pages = [['History','history'],['Updates','settings'],['Library','library'],['Browse','browse'],['Settings','more']];
   const title = state.page === 'Settings' ? 'More' : state.page;
   const search = state.mobileSearch || state.page === 'Browse';
   const header = `<header class="mobile-header"><h1>${title}</h1><div class="mobile-actions">${button('mobile-search',mobileIcon('search'),'mobile-icon','aria-label="Search manga"')}${button('mobile-filters',mobileIcon('filter'),'mobile-icon','aria-label="Filter and sort library"')}${button('mobile-menu',mobileIcon('menu'),'mobile-icon','aria-label="Library options"')}</div></header>`;
-  const tabs = library ? categoryTabs(true) : '';
+  const tabs = library ? (navigator.onLine===false?'':categoryTabs(true))+(navigator.onLine===false?'<p class="offline-library-note" role="status">Offline · Showing downloaded manga</p>':'') : '';
   const searchBar = search && state.page !== 'Settings' ? `<label class="search mobile-search">${icon('search')}<input id="search" aria-label="Search manga" placeholder="${state.page === 'Browse' ? 'Search source' : 'Search library'}" value="${esc(state.query)}"></label>` : '';
   const source = state.page === 'Browse' ? `<div class="mobile-source"><label>Source <select id="source">${sourceOptions()}</select></label></div>` : '';
   const empty = !shown.length && !state.loading ? `<div class="empty mobile-empty">${icon('book')}<h3>${library ? 'No manga in this category' : 'No titles yet'}</h3><p>${state.query ? 'Try another search.' : library && state.mobileCategory === 'nsfw' ? 'Open a title and choose Move to nsfw.' : 'Browse a source or import your manga.'}</p>${!library && state.page==='Browse' && !state.source ? button('nav','Add sources in Settings','primary','data-page="Settings"') : button(library ? 'browse' : 'import',library ? 'Browse manga' : 'Import files','primary')}</div>` : '';
@@ -431,10 +442,11 @@ function showMobileSheet(kind) {
 document.addEventListener('click', async event => {
   const target = event.target.closest('[data-action]');
   const action = target?.dataset.action;
+  if(action==='manga-download-info'){const b=bookById(target.dataset.id),count=b.chapters.filter(c=>c.downloaded).length;categoryLayer('Downloaded chapters',`<p>${esc(b.title)}</p><p><b>${count} of ${b.chapters.length} chapters</b> saved on this device.</p>`);return;}
   if (!action?.startsWith('mobile-')) return;
   event.stopImmediatePropagation();
   try {
-    if (action === 'mobile-category') { state.mobileCategory = target.dataset.category; render(); }
+    if (action === 'mobile-category') await animateMobileCategory(target.dataset.category);
     if (action === 'mobile-manage-categories') showCategories();
     if (action === 'mobile-assign-category') showCategories(target.dataset.id);
     if (action === 'mobile-edit-category') showCategories(null, target.dataset.name);
@@ -458,3 +470,81 @@ document.addEventListener('click', async event => {
     }
   } catch (error) { toast(error); }
 });
+
+document.addEventListener('change',event=>{if(event.target.id==='chapter-order'){try{localStorage.setItem('mreader:chapter-order',event.target.value);}catch{}renderDetails();}});
+let mobileGesture=null,categorySlide=null;
+function reducedCategoryMotion(){return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches||false;}
+function clearCategorySlide(){
+ const slide=categorySlide;if(!slide)return;categorySlide=null;
+ for(const animation of slide.animations||[])animation.cancel();
+ slide.current.style.removeProperty('transform');slide.current.style.removeProperty('will-change');slide.current.style.removeProperty('pointer-events');
+ if(slide.wrapper.isConnected)slide.wrapper.replaceWith(slide.current);
+}
+function prepareCategorySlide(target,sign){
+ clearCategorySlide();
+ const current=document.querySelector('.mobile-main>.mobile-grid');if(!current)return null;
+ const rect=current.getBoundingClientRect(),wrapper=document.createElement('div');wrapper.className='category-swipe-viewport';wrapper.style.height=Math.max(rect.height,180)+'px';
+ current.before(wrapper);wrapper.append(current);current.style.willChange='transform';current.style.pointerEvents='none';
+ const preview=document.createElement('div');preview.className='grid mobile-grid category-swipe-preview';preview.inert=true;preview.setAttribute('aria-hidden','true');
+ const data=target?filtered().filter(book=>matchesLibraryCategory(book,target)):[];
+ preview.innerHTML=data.length?data.map(card).join(''):'<div class="empty mobile-empty"><h3>No manga in this category</h3></div>';
+ preview.style.top=(window.scrollY||0)+'px';wrapper.append(preview);
+ const width=wrapper.clientWidth;preview.style.transform=`translate3d(${sign*width}px,0,0)`;
+ categorySlide={current,preview,wrapper,width,target,sign,category:state.mobileCategory,dx:0,animations:[]};return categorySlide;
+}
+function dragCategory(dx){
+ const names=libraryCategoryNames(),index=names.indexOf(state.mobileCategory),sign=dx<0?1:-1,target=names[index+sign];
+ let slide=categorySlide;if(!slide||slide.sign!==sign)slide=prepareCategorySlide(target,sign);if(!slide)return;
+ slide.dx=target?Math.max(-slide.width,Math.min(slide.width,dx)):dx*.22;
+ slide.current.style.transform=`translate3d(${slide.dx}px,0,0)`;
+ slide.preview.style.transform=`translate3d(${sign*slide.width+slide.dx}px,0,0)`;
+}
+async function settleCategorySlide(commit){
+ const slide=categorySlide;if(!slide)return;
+ const destination=commit&&slide.target?-slide.sign*slide.width:0;
+ const duration=reducedCategoryMotion()?0:210;
+ for(const [element,to] of [[slide.current,destination],[slide.preview,slide.sign*slide.width+destination]]){
+  const animation=element.animate([{transform:element.style.transform},{transform:`translate3d(${to}px,0,0)`}],{duration,easing:'cubic-bezier(.2,.8,.2,1)',fill:'forwards'});
+  slide.animations.push(animation);
+ }
+ await Promise.allSettled(slide.animations.map(a=>a.finished));
+ if(categorySlide!==slide)return;
+ const valid=state.page==='Library'&&state.mobileCategory===slide.category&&slide.wrapper.isConnected;
+ clearCategorySlide();
+ if(commit&&slide.target&&valid){state.mobileCategory=slide.target;render();window.scrollTo?.(0,0);document.querySelector('.mobile-categories .active')?.scrollIntoView({behavior:reducedCategoryMotion()?'instant':'smooth',block:'nearest',inline:'nearest'});}
+}
+async function animateMobileCategory(name){
+ if(name===state.mobileCategory){clearCategorySlide();return;}
+ if(!useMobileLayout()||navigator.onLine===false){clearCategorySlide();state.mobileCategory=name;render();return;}
+ const names=libraryCategoryNames(),sign=names.indexOf(name)>names.indexOf(state.mobileCategory)?1:-1;
+ prepareCategorySlide(name,sign);await settleCategorySlide(true);
+}
+document.addEventListener('touchstart',event=>{
+ if(event.touches.length!==1){mobileGesture=null;void settleCategorySlide(false);return;}
+ if(!useMobileLayout()||state.reader||state.detail||document.querySelector('#mobile-sheet'))return;
+ clearCategorySlide();const t=event.touches[0];const blocked=event.target.closest('input,select,textarea,.mobile-bottom,.mobile-categories');
+ mobileGesture=blocked?null:{x:t.clientX,y:t.clientY,page:state.page,top:window.scrollY<=2,time:performance.now(),axis:null};
+},{passive:true});
+document.addEventListener('touchmove',event=>{
+ const start=mobileGesture;if(!start||event.touches.length!==1||state.page!==start.page||state.page!=='Library'||navigator.onLine===false)return;
+ const t=event.touches[0],dx=t.clientX-start.x,dy=t.clientY-start.y;
+ if(!start.axis&&Math.max(Math.abs(dx),Math.abs(dy))>10)start.axis=Math.abs(dx)>Math.abs(dy)*1.3?'horizontal':'vertical';
+ if(start.axis!=='horizontal')return;
+ if(event.cancelable)event.preventDefault();dragCategory(dx);
+},{passive:false});
+document.addEventListener('touchend',event=>{
+ const start=mobileGesture;mobileGesture=null;if(!start||state.page!==start.page||!event.changedTouches.length){void settleCategorySlide(false);return;}
+ const t=event.changedTouches[0],dx=t.clientX-start.x,dy=t.clientY-start.y;
+ if(state.page==='Library'&&navigator.onLine!==false&&start.axis!=='vertical'&&Math.abs(dx)>Math.abs(dy)*1.5){
+  if(!categorySlide&&Math.abs(dx)>10)dragCategory(dx);
+  const threshold=Math.min(80,Math.max(45,(categorySlide?.width||innerWidth)*.2));
+  const flick=Math.abs(dx)>25&&Math.abs(dx)/Math.max(1,performance.now()-start.time)>.5;
+  void settleCategorySlide(Math.abs(dx)>threshold||flick);return;
+ }
+ void settleCategorySlide(false);
+ if(state.page==='Browse'&&start.top&&dy>90&&dy>Math.abs(dx)*1.5&&!state.loading){toast('Refreshing sources…');searchSource(false,true).catch(toast);}
+},{passive:true});
+document.addEventListener('touchcancel',()=>{mobileGesture=null;void settleCategorySlide(false);},{passive:true});
+document.addEventListener('click',event=>{if(categorySlide&&event.target.closest('.category-swipe-viewport')){event.preventDefault();event.stopImmediatePropagation();}},true);
+window.addEventListener('offline',()=>{if(state.page==='Library'&&!state.reader)render();});
+window.addEventListener('online',()=>{if(state.page==='Library'&&!state.reader)render();});

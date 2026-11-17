@@ -24,6 +24,10 @@ import java.security.MessageDigest
 object ExtensionHost {
     private val sources = java.util.concurrent.ConcurrentHashMap<String, Source>()
     private val packages = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+    // Reuse the extension's successful Browse thumbnails for saved Library titles.
+    // Some extensions return art in search but omit it from manga details.
+    private val coverUrls = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val chapterContext = java.util.concurrent.ConcurrentHashMap<String,Map<String,SChapter>>()
     private var initialized = false
     @Synchronized private fun init(context: Context) {
         if (initialized) return
@@ -91,15 +95,30 @@ object ExtensionHost {
                             val query=args.optString("query")
                             val page=args.optInt("page",1)
                             val result=if(query.isBlank())source.getPopularManga(page) else source.getSearchManga(page,query,source.getFilterList())
+                            if(coverUrls.size>512)coverUrls.clear()
+                            result.mangas.forEach {m -> m.thumbnail_url?.takeIf {it.isNotBlank()}?.let {coverUrls[source.id.toString()+"\u0000"+m.url]=it}}
                             JSONObject().put("hasNextPage",result.hasNextPage).put("mangas",JSONArray().apply {result.mangas.forEach {put(mangaJson(it))}})
                         }
                         "chapters" -> {
                             val result=source.getMangaUpdate(manga(args), emptyList(),true,true)
-                            JSONObject().put("manga",mangaJson(result.manga)).put("chapters",JSONArray().apply {result.chapters.forEach {c -> put(JSONObject().put("url",c.url).put("title",c.name).put("number",c.chapter_number.toString()).put("group",c.scanlator ?: ""))}})
+                            if(chapterContext.size>16)chapterContext.clear()
+                            chapterContext[source.id.toString()+"\u0000"+args.getString("url")]=result.chapters.associateBy{it.url}
+                            JSONObject().put("manga",mangaJson(result.manga)).put("chapters",JSONArray().apply {result.chapters.forEach {c -> put(JSONObject().put("url",c.url).put("title",c.name).put("number",c.chapter_number.toString()).put("group",c.scanlator ?: "").put("memo",JSONObject(c.memo.toString())))}})
                         }
                         "pages" -> {
-                            val chapter=SChapter.create().apply {url=args.getString("url");name=args.optString("title")}
-                            JSONArray().apply {source.getPageList(chapter).forEach {p ->
+                            val key=source.id.toString()+"\u0000"+args.optString("mangaUrl")
+                            val chapter=SChapter.create().apply {url=args.getString("url");name=args.optString("title");args.optJSONObject("memo")?.let{memo=Json.parseToJsonElement(it.toString()) as kotlinx.serialization.json.JsonObject}}
+                            val prepared=if(chapter.memo.isEmpty())chapterContext[key]?.get(chapter.url)?:chapter else chapter
+                            val pages=try{source.getPageList(prepared)}catch(error:IllegalStateException){
+                                if(error.message?.contains("Refresh the chapter list",true)!=true||args.optString("mangaUrl").isBlank())throw error
+                                // Older saved chapters lack extension memo. Recover context once
+                                // for this exact source/manga/chapter; never guess another chapter.
+                                val update=source.getMangaUpdate(SManga.create().apply{url=args.getString("mangaUrl");title=args.optString("mangaTitle")},emptyList(),false,true)
+                                if(chapterContext.size>16)chapterContext.clear()
+                                chapterContext[key]=update.chapters.associateBy{it.url}
+                                source.getPageList(update.chapters.firstOrNull{it.url==chapter.url}?:throw error)
+                            }
+                            JSONArray().apply {pages.forEach {p ->
                                 if(p.imageUrl.isNullOrEmpty())p.imageUrl=(source as? HttpSource)?.getImageUrl(p) ?: error("Source cannot resolve page images")
                                 put(JSONObject().put("index",p.index).put("url",p.url).put("imageUrl",p.imageUrl))
                             }}
@@ -109,7 +128,15 @@ object ExtensionHost {
                             val p=args.getJSONObject("page")
                             val imageUrl=if(p.has("mangaUrl")) {
                                 val m=SManga.create().apply {url=p.getString("mangaUrl");title=p.optString("mangaTitle")}
-                                source.getMangaUpdate(m, emptyList(),true,false).manga.thumbnail_url ?: error("Source returned no cover")
+                                val key=source.id.toString()+"\u0000"+m.url
+                                coverUrls[key] ?: run {
+                                    val details=runCatching {source.getMangaUpdate(m, emptyList(),true,false).manga.thumbnail_url?.takeIf {it.isNotBlank()}}
+                                    val cover=details.getOrNull() ?: run {
+                                        require(m.title.isNotBlank()) {"Source returned no cover"}
+                                        source.getSearchManga(1,m.title,source.getFilterList()).mangas.firstOrNull {it.url==m.url}?.thumbnail_url?.takeIf {it.isNotBlank()}
+                                    } ?: throw (details.exceptionOrNull() ?: IllegalStateException("Source returned no cover for this saved title"))
+                                    coverUrls[key]=cover;cover
+                                }
                             } else p.getString("imageUrl")
                             val page=Page(p.optInt("index"),p.optString("url"),imageUrl)
                             val cache=File(context.cacheDir,"extension-images").apply {mkdirs()}

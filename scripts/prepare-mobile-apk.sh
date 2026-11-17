@@ -2,12 +2,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 file=resources/mobile/Mreader-android.apk
-expected=d65d8cefb0a37169bf6a43ce768bfc80b1093ef755724ebc3770680cc9cc069b
+version=$(python3 -c 'import json;print(json.load(open("src-tauri/tauri.conf.json"))["version"])')
 mkdir -p resources/mobile
-if ! test -f "$file"; then
+if test -f "releases/android/Mreader-$version-arm64.apk"; then
+  cp "releases/android/Mreader-$version-arm64.apk" "$file"
+  printf '%s' "$version" > resources/mobile/apk-version.txt
+fi
+if ! test -f "$file" || ! test -f resources/mobile/apk-version.txt || test "$(cat resources/mobile/apk-version.txt)" != "$version"; then
   temp=$(mktemp -d)
   trap 'rm -rf "$temp"' EXIT
-  gh release download v0.3.9-desktop-preferences --repo OReid60/mreader --pattern Mreader-0.3.9-arm64.apk --dir "$temp"
-  cp "$temp/Mreader-0.3.9-arm64.apk" "$file"
+  gh release download "v$version" --repo OReid60/mreader --pattern "Mreader-$version-arm64.apk" --dir "$temp"
+  cp "$temp/Mreader-$version-arm64.apk" "$file"
+  printf '%s' "$version" > resources/mobile/apk-version.txt
 fi
-printf '%s  %s\n' "$expected" "$file" | sha256sum -c -
+sha256sum "$file"

@@ -50,11 +50,13 @@ pub fn download_stop(app:tauri::AppHandle,core:tauri::State<Arc<Core>>,book_id:S
 }
 pub fn start(app:tauri::AppHandle,core:Arc<Core>){
  if core.queue.running.swap(true,Ordering::SeqCst){return;}
+ crate::shutdown_trace::event("download.worker.start");
  tauri::async_runtime::spawn(async move{
   loop{
    let next={let mut jobs=match core.queue.jobs.lock(){Ok(j)=>j,Err(_)=>break};
     jobs.iter_mut().find(|j|!j.paused&&!j.pending.is_empty()).map(|j|{let id=j.pending.remove(0);j.active=Some(id.clone());j.page_done=0;j.page_total=0;(j.id.clone(),id)})};
    let Some((book,chapter))=next else{break};
+   crate::shutdown_trace::event("download.chapter.begin");
    if announce(&app,&core).is_err(){break;}
    let key=format!("{book}:{chapter}");
    let result=if core.downloads.lock().map(|mut d|d.insert(key.clone())).unwrap_or(false){
@@ -63,10 +65,12 @@ pub fn start(app:tauri::AppHandle,core:Arc<Core>){
    }else{Err("Chapter already downloading; retry when it finishes".into())};
    if let Ok(mut jobs)=core.queue.jobs.lock(){if let Some(j)=jobs.iter_mut().find(|j|j.id==book){j.active=None;match result{Ok(_)=>j.done+=1,Err(error)=>j.failed.push(Failure{id:chapter,error})};}}
    let _=announce(&app,&core);
+   crate::shutdown_trace::event("download.chapter.finished");
   }
   let _=platform(&app,false,"Downloads paused or complete",0,0);
   let _=announce(&app,&core);
   core.queue.running.store(false,Ordering::SeqCst);
+  crate::shutdown_trace::event("download.worker.idle");
   // Enqueue can race the final iteration; check again after releasing ownership.
   let restart=core.queue.jobs.lock().map(|j|j.iter().any(|j|!j.paused&&!j.pending.is_empty())).unwrap_or(false);
   if restart{let _=platform(&app,true,"Continuing downloads",0,0);start(app,core);}
