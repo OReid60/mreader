@@ -55,3 +55,21 @@ retries only failures at their original page offsets. Cached Browse views retain
 their source notices. Selecting a single source shows its own failure or clears
 the notice when successful. Country restrictions and browser verification remain
 requirements of the source; Mreader does not bypass them or disable sources.
+
+## Automatic source skips (0.3.30)
+
+All installed sources omits failed sources on later requests without uninstalling
+or hiding them from individual selection. Country restrictions, verification and
+other source failures stay skipped until a successful explicit retry, re-enabling,
+or a different installed extension version. Network and server failures pause a
+source for five minutes. Offline device errors do not create a persistent skip.
+A successful explicit source search clears its skip. Zero search results alone
+never disables a source.
+
+Source availability controls are in Settings → Sources on desktop and More on
+Android. Skips persist in local WebView preferences, scoped to the current data
+profile/account. They are device-specific and are not synced or included in the
+metadata backup. No library, downloaded file, extension package or reading record
+is removed. Tests: `npm run test:browse` covers reload persistence, isolation,
+version changes, cooldown expiry, offline protection, recovery controls and no
+requests when all sources are skipped.

@@ -8,7 +8,7 @@
 
 A reader for Windows, Android phones and tablets, and Linux.
 
-[**Download Mreader 0.3.29**](https://github.com/OReid60/mreader/releases/tag/v0.3.29) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
+[**Download Mreader 0.3.30**](https://github.com/OReid60/mreader/releases/tag/v0.3.30) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
 
 </div>
 
@@ -30,11 +30,11 @@ A reader for Windows, Android phones and tablets, and Linux.
 
 Install Android updates over the existing app to keep its data. Source extensions, repository links, and manga content are not included. Users obtain and verify repositories independently. Source availability depends on the provider and extension author.
 
-## What’s new in 0.3.29
+## What’s new in 0.3.30
 
-Browse keeps working manga visible when some sources fail. A compact notice explains which sources need browser verification, are unavailable in your country, or could not be reached. **Retry failed sources** retries only those sources. All installed sources remains the default on Android and desktop. Users provide and verify their own extension repositories.
+All installed sources automatically skips sources that fail or report a country restriction, without uninstalling them. Source availability controls let you retry or re-enable them. Temporary network problems use a five-minute cooldown; simply being offline does not permanently disable your sources. Skip decisions stay on each device and profile. Users provide and verify their own extension repositories.
 
-See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.29) for downloads and validation notes.
+See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.30) for downloads and validation notes.
 
 ## Build and contribute
 

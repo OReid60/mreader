@@ -181,9 +181,65 @@ function inferEarlierRead(bookId,chapterId) {
 const browseCache=new Map(), browseVariants=new Map(), sourcePreviews=new Map();
 const browseRequests=new Map(),browseViews=new Map(),browseFailures=new Map();
 function browseScope(){return JSON.stringify([state.dataDir,state.settings.language,featureState.cloud.profile,featureState.cloud.email,featureState.apk.installed.map(e=>[e.extension.package,e.extension.versionCode]),featureState.extensions.map(e=>[e.id,e.version])]);}
-function saveBrowseView(){if(state.loading||state.catalog.length>500)return;browseViews.set(browseScope(),{at:Date.now(),source:state.source,query:state.query,catalog:state.catalog,total:state.total,apkPage:state.apkPage,offsets:[...browseOffsets],more:[...browseMore],scroll:window.scrollY||0,failures:[...browseFailures]});if(browseViews.size>6)browseViews.delete(browseViews.keys().next().value);}
-function restoreBrowseView(){const v=browseViews.get(browseScope());if(!v||Date.now()-v.at>300000||v.source!==state.source)return false;Object.assign(state,{query:v.query,catalog:v.catalog,total:v.total,apkPage:v.apkPage,catalogContext:JSON.stringify([v.source,v.query,browseScope()])});browseOffsets=new Map(v.offsets);browseMore=new Set(v.more);browseFailures.clear();for(const [id,issue] of v.failures||[])browseFailures.set(id,issue);render();globalThis.requestAnimationFrame?.(()=>window.scrollTo?.(0,v.scroll));return true;}
+function saveBrowseView(){if(state.loading||state.catalog.length>500)return;browseViews.set(browseScope(),{at:Date.now(),source:state.source,query:state.query,catalog:state.catalog,total:state.total,apkPage:state.apkPage,offsets:[...browseOffsets],more:[...browseMore],scroll:window.scrollY||0,failures:[...browseFailures],skips:sourceSkipToken()});if(browseViews.size>6)browseViews.delete(browseViews.keys().next().value);}
+function restoreBrowseView(){const v=browseViews.get(browseScope());if(!v||Date.now()-v.at>300000||v.source!==state.source||v.skips!==sourceSkipToken())return false;Object.assign(state,{query:v.query,catalog:v.catalog,total:v.total,apkPage:v.apkPage,catalogContext:JSON.stringify([v.source,v.query,browseScope()])});browseOffsets=new Map(v.offsets);browseMore=new Set(v.more);browseFailures.clear();for(const [id,issue] of v.failures||[])browseFailures.set(id,issue);render();globalThis.requestAnimationFrame?.(()=>window.scrollTo?.(0,v.scroll));return true;}
 let browseOffsets=new Map(),browseMore=new Set();
+let sourceSkipScope='',sourceSkipRecords=Object.create(null),sourceSkipSaveFailed=false;
+const sourceChecks=new Set();
+function sourceSkipKey(){return 'mreader:source-skips:'+JSON.stringify([state.dataDir,featureState.cloud.profile,featureState.cloud.email]);}
+function sourceSkipData(){
+ const key=sourceSkipKey();if(key!==sourceSkipScope){sourceSkipScope=key;sourceSkipSaveFailed=false;try{sourceSkipRecords=Object.assign(Object.create(null),JSON.parse(localStorage.getItem(key)||'{}'));}catch{sourceSkipRecords=Object.create(null);}}
+ return sourceSkipRecords;
+}
+function sourceVersion(id){
+ if(id.startsWith('apk:')){const e=featureState.apk.installed.find(e=>e.extension.sources.some(s=>'apk:'+s.id===id));return e?String(e.extension.versionCode??e.extension.version??''):null;}
+ if(id.startsWith('ext:'))return featureState.extensions.find(e=>'ext:'+e.id===id)?.version??null;
+ return id==='komga'&&state.settings.komgaUrl?'komga':null;
+}
+function sourceSkipStatus(id){
+ const item=sourceSkipData()[id];
+ return item&&item.version===sourceVersion(id)&&typeof item.retryAfter==='number'&&(item.retryAfter===0||item.retryAfter>Date.now())?item:null;
+}
+function sourceIsSkipped(id){return !!sourceSkipStatus(id);}
+function skippedSources(){return userSources().filter(s=>sourceIsSkipped(s.id));}
+function allSourcesSkipped(){const sources=state.page==='Browse'&&state.source==='all'?userSources():[];return sources.length>0&&sources.every(s=>sourceIsSkipped(s.id));}
+function sourceSkipToken(){return skippedSources().map(s=>s.id).sort().join('|');}
+function saveSourceSkips(){
+ try{localStorage.setItem(sourceSkipScope,JSON.stringify(sourceSkipRecords));sourceSkipSaveFailed=false;}
+ catch{if(!sourceSkipSaveFailed)toast('Source skip settings could not be saved. They may reset after restart.');sourceSkipSaveFailed=true;}
+ browseViews.clear();
+}
+function clearSourceSkip(id){const records=sourceSkipData();if(Object.hasOwn(records,id)){delete records[id];saveSourceSkips();}}
+function browseFailureKind(error){
+ const text=String(error);
+ if(/not available in (?:your|this) (?:country|region)|geo.?restrict/i.test(text))return 'region';
+ if(/browser verification|cloudflare|captcha|browser challenge/i.test(text))return 'verification';
+ if(/UnknownHost|EAI_NODATA|network|failed to fetch|connection|offline|DNS|timeout|timed out|\b(?:429|5\d\d)\b/i.test(text))return 'network';
+ return 'source';
+}
+function skipFailedSource(source,error){
+ const kind=browseFailureKind(error);if(kind==='network'&&navigator.onLine===false)return;
+ const version=sourceVersion(source.id);if(version===null)return;
+ const records=sourceSkipData();records[source.id]={version,kind,reason:browseProblemMessage(error),checkedAt:Date.now(),retryAfter:kind==='network'?Date.now()+300000:0};saveSourceSkips();
+}
+function sourceSkipActions(id){return `${button('source-check','Retry source','secondary',`data-source-id="${esc(id)}" ${state.loading||sourceChecks.has(id)?'disabled':''}`)}${sourceIsSkipped(id)?button('source-enable','Re-enable','secondary',`data-source-id="${esc(id)}" ${state.loading||sourceChecks.has(id)?'disabled':''}`):''}`;}
+function sourceSkipRow(source){
+ const item=sourceSkipStatus(source.id);if(!item)return '';
+ const status=item.retryAfter?`Skipped temporarily · eligible again in ${Math.max(1,Math.ceil((item.retryAfter-Date.now())/60000))} min`:'Skipped in All until you retry or re-enable it';
+ return `<div class="browse-source-issue"><b>${esc(source.name)}</b><small>${esc(item.reason)}</small><small>${esc(status)}</small><div class="button-row">${sourceSkipActions(source.id)}</div></div>`;
+}
+function sourceAvailabilityView(){
+ const skipped=skippedSources();
+ return `<details class="feature-panel source-availability-panel"><summary>Source availability · ${skipped.length} skipped in All</summary><p>Sources that fail are skipped automatically in All installed sources on this device. They remain installed and available for individual selection. Network failures pause a source for five minutes; other failures stay skipped until a successful retry, re-enabling, or an extension update.</p>${sourceSkipSaveFailed?'<p class="notice">Skip settings could not be saved and may reset after restart.</p>':''}${skipped.length?`<div class="browse-source-issues">${skipped.map(sourceSkipRow).join('')}</div>`:'<p class="sub">No sources are currently skipped.</p>'}</details>`;
+}
+async function checkSourceAvailability(id){
+ if(sourceChecks.has(id))return;const source=userSources().find(s=>s.id===id);if(!source)return;
+ const scope=sourceSkipKey(),version=sourceVersion(id);sourceChecks.add(id);render();
+ try{await cachedSourceSearch(id,'',id.startsWith('apk:')?1:0,true);if(scope!==sourceSkipKey()||version!==sourceVersion(id))return;clearSourceSkip(id);browseFailures.delete(id);toast('Source is available and enabled in All.');}
+ catch(error){if(scope!==sourceSkipKey()||version!==sourceVersion(id))return;skipFailedSource(source,error);toast(browseProblemMessage(error));}
+ finally{sourceChecks.delete(id);render();}
+}
+
 const titleKey=b=>b.title.normalize('NFKC').trim().toLocaleLowerCase().replace(/\s+/g,' ');
 function mergeBrowseBooks(books) {
   const grouped=new Map();browseVariants.clear();
@@ -214,17 +270,20 @@ function browseProblemMessage(error){
  return 'Could not load this source. Try again or check its extension.';
 }
 function recordBrowseFailure(source,error){
- browseFailures.set(source.id,{id:source.id,name:source.name,message:browseProblemMessage(error)});
+ skipFailedSource(source,error);browseFailures.set(source.id,{id:source.id,name:source.name,message:browseProblemMessage(error)});
 }
 function browseIssueView(){
- if(state.page!=='Browse'||!browseFailures.size)return '';
- const issues=[...browseFailures.values()];
- return `<details class="browse-source-notice" ${state.catalog.length?'':'open'}><summary>${issues.length} ${issues.length===1?'source needs':'sources need'} attention</summary><p>${state.catalog.length?'Other results are available below. You can keep browsing.':'These sources could not load results.'}</p><div class="browse-source-issues">${issues.map(issue=>`<div class="browse-source-issue"><b>${esc(issue.name)}</b><small>${esc(issue.message)}</small></div>`).join('')}</div>${button('browse-retry-failed',state.loading?'Loading…':'Retry failed sources','secondary',state.loading?'disabled':'')}</details>`;
+ if(state.page!=='Browse')return '';
+ const skipped=state.source==='all'?skippedSources():[],issues=new Map([...browseFailures]);
+ for(const source of skipped)issues.set(source.id,{id:source.id,name:source.name,message:sourceSkipStatus(source.id).reason});
+ if(!issues.size)return '';
+ const summary=skipped.length===issues.size?`${skipped.length} ${skipped.length===1?'source':'sources'} skipped in All`:`${issues.size} ${issues.size===1?'source needs':'sources need'} attention`;
+ return `<details class="browse-source-notice" ${state.catalog.length?'':'open'}><summary>${esc(summary)}</summary><p>${allSourcesSkipped()?'All sources are currently skipped. Retry or re-enable them, or select a single source to check it.':state.catalog.length?'Working results remain available below. Skipped sources stay installed.':'These sources could not load results.'}</p><div class="browse-source-issues">${[...issues.values()].map(issue=>sourceIsSkipped(issue.id)?sourceSkipRow({id:issue.id,name:issue.name}):`<div class="browse-source-issue"><b>${esc(issue.name)}</b><small>${esc(issue.message)}</small><div class="button-row">${sourceSkipActions(issue.id)}</div></div>`).join('')}</div>${button('browse-retry-failed',state.loading?'Loading…':skipped.length?'Retry skipped sources':'Retry failed sources','secondary',state.loading?'disabled':'')}</details>`;
 }
 async function searchAllSources(more,version,force=false,retrySources=null) {
  const sources=userSources(),retry=Array.isArray(retrySources);
- if(!more&&!retry){browseOffsets=new Map();browseMore=new Set(sources.map(s=>s.id));}
- const pending=sources.filter(s=>retry?retrySources.includes(s.id):browseMore.has(s.id));
+ if(!more&&!retry){browseOffsets=new Map();browseMore=new Set(sources.filter(s=>!sourceIsSkipped(s.id)).map(s=>s.id));}
+ const pending=sources.filter(s=>retry?retrySources.includes(s.id):browseMore.has(s.id)&&!sourceIsSkipped(s.id));
  let cursor=0,books=more||retry?state.catalog.flatMap(b=>browseVariants.get(b.id)||[b]):[];
  const current=()=>version===searchVersion&&state.page==='Browse';
  await Promise.all(Array.from({length:Math.min(3,pending.length)},async()=>{
@@ -232,13 +291,14 @@ async function searchAllSources(more,version,force=false,retrySources=null) {
    try{
     const offset=browseOffsets.get(source.id)??(source.id.startsWith('apk:')?1:0);
     const r=await cachedSourceSearch(source.id,state.query,offset,force);if(!current())return;
-    browseFailures.delete(source.id);
+    clearSourceSkip(source.id);browseFailures.delete(source.id);
     books.push(...r.books);browseOffsets.set(source.id,offset+(source.id.startsWith('apk:')?1:r.books.length));
     if(!r.books.length||r.total<=(source.id.startsWith('apk:')?r.books.length:offset+r.books.length))browseMore.delete(source.id);else browseMore.add(source.id);
-    state.catalog=mergeBrowseBooks(books);state.total=state.catalog.length+(browseMore.size?1:0);render();
-   }catch(e){if(!current())return;recordBrowseFailure(source,e);browseMore.delete(source.id);state.total=state.catalog.length+(browseMore.size?1:0);render();}
+    books=books.filter(b=>!sourceIsSkipped(b.source));state.catalog=mergeBrowseBooks(books);state.total=state.catalog.length+(browseMore.size?1:0);render();
+   }catch(e){if(!current())return;recordBrowseFailure(source,e);browseMore.delete(source.id);books=books.filter(b=>!sourceIsSkipped(b.source));state.catalog=mergeBrowseBooks(books);state.total=state.catalog.length+(browseMore.size?1:0);render();}
   }
  }));
+ if(current()){state.total=state.catalog.length+(browseMore.size?1:0);}
 }
 async function compareBrowseSources(id) {
   const variants=browseVariants.get(id);if(!variants||variants.length<2)return null;
@@ -358,10 +418,10 @@ function sourceOptions() {
   const sources=userSources();
   if(sources.length)sources.unshift({id:'all',name:'All installed sources'});
   const pending=state.source && !sources.some(s=>s.id===state.source);
-  return (pending?`<option value="${esc(state.source)}" selected disabled>Synced source · waiting to prepare</option>`:sources.length?'':'<option value="" selected>Add sources in Settings</option>') + sources.map(s=>`<option value="${esc(s.id)}" ${s.id===state.source?'selected':''}>${esc(s.name)}</option>`).join('');
+  return (pending?`<option value="${esc(state.source)}" selected disabled>Synced source · waiting to prepare</option>`:sources.length?'':'<option value="" selected>Add sources in Settings</option>') + sources.map(s=>`<option value="${esc(s.id)}" ${s.id===state.source?'selected':''}>${esc(s.name)}${sourceIsSkipped(s.id)?' · Skipped in All':''}</option>`).join('');
 }
 function extensionView() {
-  return sourceSyncView() + apkView() + `<section class="feature-panel"><div class="feature-heading"><div><h2>Custom source extensions</h2><p>Import your own source extension to use on your devices.</p></div><div class="button-row"><label class="secondary">Import manifest<input type="file" id="extension-file" accept=".json" hidden></label></div></div>${featureState.extensions.length ? featureState.extensions.map((e) => `<div class="extension-row"><div><b>${esc(e.name)}</b><small>Version ${esc(e.version)}</small></div><div class="button-row">${extensionFlagButton("native:"+e.id)}${button("extension-export", "Export", "secondary", `data-extension="${esc(e.id)}"`)}${button("extension-remove", "Uninstall", "secondary", `data-extension="${esc(e.id)}"`)}</div></div>`).join("") : '<p class="sub">No native extensions installed. Import your own manifest to add a source.</p>'}<p class="feature-note">Add an extension list above to find more sources. Updating an extension keeps your library and reading progress.</p></section>`;
+  return sourceAvailabilityView() + sourceSyncView() + apkView() + `<section class="feature-panel"><div class="feature-heading"><div><h2>Custom source extensions</h2><p>Import your own source extension to use on your devices.</p></div><div class="button-row"><label class="secondary">Import manifest<input type="file" id="extension-file" accept=".json" hidden></label></div></div>${featureState.extensions.length ? featureState.extensions.map((e) => `<div class="extension-row"><div><b>${esc(e.name)}</b><small>Version ${esc(e.version)}</small></div><div class="button-row">${extensionFlagButton("native:"+e.id)}${button("extension-export", "Export", "secondary", `data-extension="${esc(e.id)}"`)}${button("extension-remove", "Uninstall", "secondary", `data-extension="${esc(e.id)}"`)}</div></div>`).join("") : '<p class="sub">No native extensions installed. Import your own manifest to add a source.</p>'}<p class="feature-note">Add an extension list above to find more sources. Updating an extension keeps your library and reading progress.</p></section>`;
 }
 function accountView() {
   const c = featureState.cloud;
@@ -404,7 +464,9 @@ document.addEventListener("input", e=>{
 });
 document.addEventListener('click',async event=>{
  const t=event.target.closest('[data-action]');if(!t)return;
- if(t.dataset.action==='browse-retry-failed'&&!state.loading&&browseFailures.size)await searchSource(false,true,[...browseFailures.keys()]);
+ if(t.dataset.action==='browse-retry-failed'&&!state.loading){const ids=[...new Set([...browseFailures.keys(),...(state.source==='all'?skippedSources().map(s=>s.id):[])])];if(ids.length)await searchSource(false,true,ids);}
+ if(t.dataset.action==='source-enable'&&!state.loading&&!sourceChecks.has(t.dataset.sourceId)){clearSourceSkip(t.dataset.sourceId);browseFailures.delete(t.dataset.sourceId);render();toast('Source enabled for the next All sources refresh.');}
+ if(t.dataset.action==='source-check'&&!state.loading){const id=t.dataset.sourceId;if(state.page==='Browse'&&(state.source==='all'||state.source===id))await searchSource(false,true,state.source==='all'?[id]:null);else await checkSourceAvailability(id);}
  if(t.dataset.action==='repository-refresh')await apkAction('apk_repository',{url:t.dataset.repository,trustKey:null});
  if(t.dataset.action==='files-layout'){try{applySnapshot(await api('save_settings',{settings:{...state.settings,filesLayout:t.dataset.layout,komgaPassword:''}}));render();}catch(error){toast(error);}}
  if(['cover-warning-hide','cover-warning-show'].includes(t.dataset.action)){const ids=new Set(state.settings.dismissedCoverWarnings||[]);if(t.dataset.action==='cover-warning-hide')ids.add(t.dataset.id);else ids.delete(t.dataset.id);try{applySnapshot(await api('save_settings',{settings:{...state.settings,dismissedCoverWarnings:[...ids],komgaPassword:''}}));if(state.detail)renderDetails();}catch(error){toast(error);}}
