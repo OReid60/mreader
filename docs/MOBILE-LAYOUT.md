@@ -46,3 +46,12 @@ specific source remains available for the session. Existing English-only source
 filtering, bounded request concurrency and temporary Browse snapshots remain.
 Desktop Library placeholders open details; cover uploads stay in the details
 panel. Mobile cover-upload behavior is unchanged.
+
+## Partial source failures (0.3.29)
+
+Unavailable sources appear in a compact, collapsible notice on mobile and desktop.
+Working results stay visible. Retry failed sources preserves those results and
+retries only failures at their original page offsets. Cached Browse views retain
+their source notices. Selecting a single source shows its own failure or clears
+the notice when successful. Country restrictions and browser verification remain
+requirements of the source; Mreader does not bypass them or disable sources.

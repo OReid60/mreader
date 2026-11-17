@@ -179,10 +179,10 @@ function inferEarlierRead(bookId,chapterId) {
 }
 
 const browseCache=new Map(), browseVariants=new Map(), sourcePreviews=new Map();
-const browseRequests=new Map(),browseViews=new Map();
+const browseRequests=new Map(),browseViews=new Map(),browseFailures=new Map();
 function browseScope(){return JSON.stringify([state.dataDir,state.settings.language,featureState.cloud.profile,featureState.cloud.email,featureState.apk.installed.map(e=>[e.extension.package,e.extension.versionCode]),featureState.extensions.map(e=>[e.id,e.version])]);}
-function saveBrowseView(){if(state.loading||state.catalog.length>500)return;browseViews.set(browseScope(),{at:Date.now(),source:state.source,query:state.query,catalog:state.catalog,total:state.total,apkPage:state.apkPage,offsets:[...browseOffsets],more:[...browseMore],scroll:window.scrollY||0});if(browseViews.size>6)browseViews.delete(browseViews.keys().next().value);}
-function restoreBrowseView(){const v=browseViews.get(browseScope());if(!v||Date.now()-v.at>300000||v.source!==state.source)return false;Object.assign(state,{query:v.query,catalog:v.catalog,total:v.total,apkPage:v.apkPage,catalogContext:JSON.stringify([v.source,v.query,browseScope()])});browseOffsets=new Map(v.offsets);browseMore=new Set(v.more);render();globalThis.requestAnimationFrame?.(()=>window.scrollTo?.(0,v.scroll));return true;}
+function saveBrowseView(){if(state.loading||state.catalog.length>500)return;browseViews.set(browseScope(),{at:Date.now(),source:state.source,query:state.query,catalog:state.catalog,total:state.total,apkPage:state.apkPage,offsets:[...browseOffsets],more:[...browseMore],scroll:window.scrollY||0,failures:[...browseFailures]});if(browseViews.size>6)browseViews.delete(browseViews.keys().next().value);}
+function restoreBrowseView(){const v=browseViews.get(browseScope());if(!v||Date.now()-v.at>300000||v.source!==state.source)return false;Object.assign(state,{query:v.query,catalog:v.catalog,total:v.total,apkPage:v.apkPage,catalogContext:JSON.stringify([v.source,v.query,browseScope()])});browseOffsets=new Map(v.offsets);browseMore=new Set(v.more);browseFailures.clear();for(const [id,issue] of v.failures||[])browseFailures.set(id,issue);render();globalThis.requestAnimationFrame?.(()=>window.scrollTo?.(0,v.scroll));return true;}
 let browseOffsets=new Map(),browseMore=new Set();
 const titleKey=b=>b.title.normalize('NFKC').trim().toLocaleLowerCase().replace(/\s+/g,' ');
 function mergeBrowseBooks(books) {
@@ -204,24 +204,41 @@ async function cachedSourceSearch(source,query,offset,force=false) {
   return result;
   })();browseRequests.set(key,pending);try{return await pending;}finally{browseRequests.delete(key);}
 }
-async function searchAllSources(more,version,force=false) {
-  const sources=userSources();
-  if(!more){browseOffsets=new Map();browseMore=new Set(sources.map(s=>s.id));}
-  const pending=sources.filter(s=>browseMore.has(s.id)),errors=[];
-  let cursor=0,books=more?state.catalog.flatMap(b=>browseVariants.get(b.id)||[b]):[];
-  const current=()=>version===searchVersion&&state.page==='Browse';
-  await Promise.all(Array.from({length:Math.min(3,pending.length)},async()=>{
-    while(cursor<pending.length){const source=pending[cursor++];
-      try{
-        const offset=browseOffsets.get(source.id)??(source.id.startsWith('apk:')?1:0);
-        const r=await cachedSourceSearch(source.id,state.query,offset,force);if(!current())return;
-        books.push(...r.books);browseOffsets.set(source.id,offset+(source.id.startsWith('apk:')?1:r.books.length));
-        if(!r.books.length||r.total<=(source.id.startsWith('apk:')?r.books.length:offset+r.books.length))browseMore.delete(source.id);
-        state.catalog=mergeBrowseBooks(books);state.total=state.catalog.length+(browseMore.size?1:0);render();
-      }catch(e){if(!current())return;errors.push(source.name+': '+String(e));browseMore.delete(source.id);}
-    }
-  }));
-  if(current()&&errors.length)state.error=errors.join(' · ');
+function browseProblemMessage(error){
+ const message=String(error);
+ if(/not available in (?:your|this) (?:country|region)|geo.?restrict/i.test(message))return 'Not available in your country.';
+ if(/browser verification|cloudflare|captcha|browser challenge/i.test(message))return 'This source requires browser verification before it can load.';
+ if(/UnknownHost|EAI_NODATA|network|failed to fetch|connection|offline|DNS/i.test(message))return 'Could not reach this source. Check your connection and retry.';
+ if(/timeout|timed out/i.test(message))return 'This source took too long to respond. Try again later.';
+ if(/401|403|unauthorized|forbidden/i.test(message))return 'This source denied access. It may require sign-in or an updated extension.';
+ return 'Could not load this source. Try again or check its extension.';
+}
+function recordBrowseFailure(source,error){
+ browseFailures.set(source.id,{id:source.id,name:source.name,message:browseProblemMessage(error)});
+}
+function browseIssueView(){
+ if(state.page!=='Browse'||!browseFailures.size)return '';
+ const issues=[...browseFailures.values()];
+ return `<details class="browse-source-notice" ${state.catalog.length?'':'open'}><summary>${issues.length} ${issues.length===1?'source needs':'sources need'} attention</summary><p>${state.catalog.length?'Other results are available below. You can keep browsing.':'These sources could not load results.'}</p><div class="browse-source-issues">${issues.map(issue=>`<div class="browse-source-issue"><b>${esc(issue.name)}</b><small>${esc(issue.message)}</small></div>`).join('')}</div>${button('browse-retry-failed',state.loading?'Loading…':'Retry failed sources','secondary',state.loading?'disabled':'')}</details>`;
+}
+async function searchAllSources(more,version,force=false,retrySources=null) {
+ const sources=userSources(),retry=Array.isArray(retrySources);
+ if(!more&&!retry){browseOffsets=new Map();browseMore=new Set(sources.map(s=>s.id));}
+ const pending=sources.filter(s=>retry?retrySources.includes(s.id):browseMore.has(s.id));
+ let cursor=0,books=more||retry?state.catalog.flatMap(b=>browseVariants.get(b.id)||[b]):[];
+ const current=()=>version===searchVersion&&state.page==='Browse';
+ await Promise.all(Array.from({length:Math.min(3,pending.length)},async()=>{
+  while(cursor<pending.length){const source=pending[cursor++];
+   try{
+    const offset=browseOffsets.get(source.id)??(source.id.startsWith('apk:')?1:0);
+    const r=await cachedSourceSearch(source.id,state.query,offset,force);if(!current())return;
+    browseFailures.delete(source.id);
+    books.push(...r.books);browseOffsets.set(source.id,offset+(source.id.startsWith('apk:')?1:r.books.length));
+    if(!r.books.length||r.total<=(source.id.startsWith('apk:')?r.books.length:offset+r.books.length))browseMore.delete(source.id);else browseMore.add(source.id);
+    state.catalog=mergeBrowseBooks(books);state.total=state.catalog.length+(browseMore.size?1:0);render();
+   }catch(e){if(!current())return;recordBrowseFailure(source,e);browseMore.delete(source.id);state.total=state.catalog.length+(browseMore.size?1:0);render();}
+  }
+ }));
 }
 async function compareBrowseSources(id) {
   const variants=browseVariants.get(id);if(!variants||variants.length<2)return null;
@@ -387,6 +404,7 @@ document.addEventListener("input", e=>{
 });
 document.addEventListener('click',async event=>{
  const t=event.target.closest('[data-action]');if(!t)return;
+ if(t.dataset.action==='browse-retry-failed'&&!state.loading&&browseFailures.size)await searchSource(false,true,[...browseFailures.keys()]);
  if(t.dataset.action==='repository-refresh')await apkAction('apk_repository',{url:t.dataset.repository,trustKey:null});
  if(t.dataset.action==='files-layout'){try{applySnapshot(await api('save_settings',{settings:{...state.settings,filesLayout:t.dataset.layout,komgaPassword:''}}));render();}catch(error){toast(error);}}
  if(['cover-warning-hide','cover-warning-show'].includes(t.dataset.action)){const ids=new Set(state.settings.dismissedCoverWarnings||[]);if(t.dataset.action==='cover-warning-hide')ids.add(t.dataset.id);else ids.delete(t.dataset.id);try{applySnapshot(await api('save_settings',{settings:{...state.settings,dismissedCoverWarnings:[...ids],komgaPassword:''}}));if(state.detail)renderDetails();}catch(error){toast(error);}}
@@ -428,7 +446,7 @@ document.addEventListener("submit",async e=>{
   const url=canonicalRepositoryUrl(form.get('url'));if(featureState.apk.repositories.some(r=>canonicalRepositoryUrl(r.url)===url)){toast('This extension list is already added. Use Refresh list to update it.');return;}await apkAction('apk_repository',{url,trustKey:(form.get('fingerprint')||'').trim().toLowerCase()||null});
 });
 function releaseCoverCache() {
-  browseCache.clear();browseViews.clear();sourcePreviews.clear();
+  browseCache.clear();browseViews.clear();sourcePreviews.clear();browseFailures.clear();
   try{for(const key of Object.keys(localStorage))if(key.startsWith('mreader:browse:'))localStorage.removeItem(key);}catch{}
   for(const id of new Set([...coverPending,...coverCache.keys()]))coverGeneration.set(id,(coverGeneration.get(id)||0)+1);
   for (const url of coverCache.values()) URL.revokeObjectURL(url);

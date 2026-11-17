@@ -1,0 +1,25 @@
+const {chromium}=require('playwright'),assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
+(async()=>{const browser=await chromium.launch({executablePath:'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true});try{for(const width of [393,1440]){
+const page=await browser.newPage({viewport:{width,height:850}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.addInitScript(()=>{
+ const snapshot=()=>({books:[],progress:[{bookId:'saved',chapterId:'one',page:7,updated:123}],categories:['Default'],settings:{theme:'dark',language:'en',startPage:'Browse'},dataDir:'source-failure-fixture'});
+ const sources=['Healthy source','Verification source','Regional source','Slow source'].map((name,i)=>({id:String(i+1),name,language:'en'}));
+ window.requests=[];window.failures={'2':'IOException: IOException: This website requires browser verification. Complete verification on the source website before retrying.','3':'IOException: This service is not available in your country.','4':'TimeoutException: timed out'};
+ window.__TAURI__={core:{invoke:async(name,args)=>{
+  if(name==='snapshot')return snapshot();if(name==='download_queue'||name==='extension_list')return[];if(name==='cloud_status')return{configured:false,signedIn:false};if(name==='verification_plan')return{enabled:false};
+  if(name==='apk_state')return{repositories:[],installed:[{extension:{name:'User extension',package:'fixture',versionCode:1,sources}}]};if(name==='source_prefer')return;
+  if(name==='cover_data')throw Error('No fixture art');
+  if(name==='search_source'){const id=args.source.slice(4);window.requests.push(id);await new Promise(r=>setTimeout(r,20));if(window.failures[id])throw Error(window.failures[id]);return{books:[{id:'result:'+id,title:'Manga '+id,source:args.source,tags:[],chapters:[]}],total:1};}
+  throw Error(name);
+ }},event:{listen:async()=>{}},webviewWindow:{getCurrentWebviewWindow:()=>({onDragDropEvent:async()=>{}})}};
+});
+await page.goto(pathToFileURL(path.resolve('index.html')).href);await page.waitForFunction(()=>state.page==='Browse'&&!state.loading&&browseFailures.size===3);
+assert.equal(await page.locator('#source').inputValue(),'all');assert.equal(await page.locator('.grid .card').count(),1);assert.equal(await page.locator('.error-box').count(),0);
+assert.equal(await page.locator('.browse-source-notice').getAttribute('open'),null);assert.equal(await page.locator('.browse-source-notice summary').innerText(),'3 sources need attention');
+assert(!(await page.locator('#app').innerText()).includes('IOException'));await page.screenshot({path:'test-artifacts/browse-source-errors-compact-'+width+'.png'});await page.locator('.browse-source-notice summary').click();await page.screenshot({path:'test-artifacts/browse-source-errors-expanded-'+width+'.png'});assert(await page.getByText('Not available in your country.',{exact:true}).isVisible());assert(await page.getByText('This source requires browser verification before it can load.',{exact:true}).isVisible());
+const healthyBefore=await page.evaluate(()=>requests.filter(id=>id==='1').length);await page.evaluate(()=>{delete failures['4'];});await page.getByRole('button',{name:'Retry failed sources',exact:true}).click();await page.waitForFunction(()=>!state.loading&&browseFailures.size===2);
+assert.equal(await page.locator('.grid .card').count(),2);assert.equal(await page.evaluate(()=>requests.filter(id=>id==='1').length),healthyBefore,'Retry must not refresh successful sources');assert.deepEqual(await page.evaluate(()=>requests.slice(-3).sort()),['2','3','4']);
+await page.evaluate(async()=>{await navigate('Library');await navigate('Browse');});assert.equal(await page.locator('.browse-source-notice summary').innerText(),'2 sources need attention');assert.equal(await page.locator('.grid .card').count(),2);
+await page.locator('#source').selectOption('apk:3');await page.waitForFunction(()=>!state.loading&&state.source==='apk:3'&&browseFailures.size===1);assert.equal(await page.locator('.browse-source-notice').getAttribute('open'),'');assert(await page.getByText('Not available in your country.',{exact:true}).isVisible());
+await page.locator('#source').selectOption('apk:1');await page.waitForFunction(()=>!state.loading&&state.source==='apk:1');assert.equal(await page.locator('.browse-source-notice').count(),0);assert.equal(await page.locator('.grid .card').count(),1);assert.equal(await page.evaluate(()=>state.progress[0].page),7);
+assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);await page.screenshot({path:'test-artifacts/browse-source-errors-'+width+'.png'});await page.close();
+}console.log('PASS partial source failures: compact notices, clear verification/region reasons, failed-only retry, healthy results preserved, cache restore, single-source recovery and unchanged progress');}finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1)});
