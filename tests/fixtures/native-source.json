@@ -1,14 +1,13 @@
 {
   "schemaVersion": 1,
-  "id": "org.mreader.mangadex",
-  "name": "MangaDex (native extension)",
+  "id": "org.example.manga",
+  "name": "Example source (test fixture)",
   "version": "1.0.0",
   "language": "multi",
-  "baseUrl": "https://api.mangadex.org",
+  "baseUrl": "https://api.example.invalid",
   "allowedHosts": [
-    "api.mangadex.org",
-    "uploads.mangadex.org",
-    "*.mangadex.network"
+    "api.example.invalid",
+    "images.example.invalid"
   ],
   "search": {
     "path": "/manga?limit={limit}&offset={offset}&title={query}&includes[]=cover_art&includes[]=author&availableTranslatedLanguage[]={language}&contentRating[]=safe&order[followedCount]=desc",
@@ -17,8 +16,14 @@
     "batchSize": 24,
     "fields": {
       "id": "/id",
-      "title": { "path": "/attributes/title", "localized": true },
-      "description": { "path": "/attributes/description", "localized": true },
+      "title": {
+        "path": "/attributes/title",
+        "localized": true
+      },
+      "description": {
+        "path": "/attributes/description",
+        "localized": true
+      },
       "status": "/attributes/status",
       "author": {
         "path": "/relationships",
@@ -34,7 +39,7 @@
       }
     },
     "templates": {
-      "cover": "https://uploads.mangadex.org/covers/{id}/{coverFile}.256.jpg"
+      "cover": "https://images.example.invalid/covers/{id}/{coverFile}.256.jpg"
     }
   },
   "chapters": {
@@ -52,7 +57,10 @@
   "pages": {
     "path": "/at-home/server/{chapter}",
     "items": "/chapter/data",
-    "fields": { "base": "/baseUrl", "hash": "/chapter/hash" },
+    "fields": {
+      "base": "/baseUrl",
+      "hash": "/chapter/hash"
+    },
     "template": "{base}/data/{hash}/{file}"
   }
 }

@@ -4,7 +4,7 @@ const{chromium}=require('playwright'),assert=require('node:assert/strict'),{path
  const settings={theme:'dark',language:'en',fit:'width',direction:'ltr',startPage:'Library',filesLayout:'list',dismissedCoverWarnings:[]};
  const book={id:'b',title:'Test manga',source:'apk:1',remoteId:'/b',cover:'',tags:[],chapters:[{id:'c',title:'One',number:'1',pages:8,downloaded:false}]},progress=[{bookId:'b',chapterId:'c',page:5,completed:false,updated:1234567890123}];
  const extension={name:'MangaDex',package:'fixture',version:'1',versionCode:1,sources:[{id:'1',name:'MangaDex',language:'en'},{id:'2',name:'MangaDex Japanese',language:'ja'}]};
- const apk={installed:[{extension}],repositories:[{url:'[user-supplied repository URL]',catalog:{name:'Keiyoushi',extensions:[extension]}}]};
+ const apk={installed:[{extension}],repositories:[{url:'https://repository.example.invalid/index.pb',catalog:{name:'User repository',extensions:[extension]}}]};
  const snapshot=()=>structuredClone({books:[book],progress,settings,categories:['Default'],dataDir:'fixture'});window.repositoryCalls=0;window.customCoverCalls=0;window.uploaded=false;window.searches=[];
  window.__TAURI__={core:{invoke:async(name,args,options)=>{
   if(name==='snapshot')return snapshot();if(name==='save_settings'){Object.assign(settings,args.settings);return snapshot();}
@@ -16,8 +16,8 @@ const{chromium}=require('playwright'),assert=require('node:assert/strict'),{path
   if(name==='search_source'){window.searches.push(args.source);return {books:[],total:0};}throw Error(name);
  }},event:{listen:async()=>{}},webviewWindow:{getCurrentWebviewWindow:()=>({onDragDropEvent:async()=>{}})}};
  });await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>state.dataDir==='fixture'&&coverFailed.has('b'));
- await p.evaluate(()=>{state.page='Settings';featureState.settingsTab='sources';render()});assert((await p.locator('.repository-list').innerText()).includes('Keiyoushi'));assert((await p.locator('.repository-list').innerText()).includes('Added'));
- await p.getByText('Add extension repository',{exact:true}).click();await p.locator('#apk-repository-form input[name=url]').fill('[user-supplied repository URL]');await p.locator('#apk-repository-form button').click();assert.equal(await p.evaluate(()=>repositoryCalls),0);
+ await p.evaluate(()=>{state.page='Settings';featureState.settingsTab='sources';render()});assert((await p.locator('.repository-list').innerText()).includes('User repository'));assert((await p.locator('.repository-list').innerText()).includes('Added'));
+ await p.getByText('Add extension repository',{exact:true}).click();await p.locator('#apk-repository-form input[name=url]').fill('https://repository.example.invalid/index.pb/');await p.locator('#apk-repository-form button').click();assert.equal(await p.evaluate(()=>repositoryCalls),0);
  if(width>760){await p.getByRole('tab',{name:'Files & backup',exact:true}).click();await p.locator('[data-action=files-layout][data-layout=stacked]').click();assert(await p.locator('.files-layout-stacked').isVisible());assert.equal(await p.evaluate(()=>state.settings.filesLayout),'stacked');await p.locator('[data-action=files-layout][data-layout=list]').click();assert(await p.locator('.files-layout-list').isVisible());}
  await p.evaluate(()=>{state.detail=state.books[0];renderDetails()});assert.equal(await p.locator(width>760?'.detail-cover > .manga-source-info':'.detail-copy .manga-source-info').count(),1);assert.equal(await p.locator('#detail .manga-source-info').count(),1);
  await p.getByRole('button',{name:'Hide warning',exact:true}).click();assert.equal(await p.locator('.manga-source-info .notice').count(),0);assert.deepEqual(await p.evaluate(()=>state.settings.dismissedCoverWarnings),['b']);await p.getByRole('button',{name:'Show cover warning',exact:true}).click();assert(await p.locator('.manga-source-info .notice').isVisible());

@@ -8,7 +8,7 @@
 
 A reader for Windows, Android phones and tablets, and Linux.
 
-[**Download Mreader 0.3.26**](https://github.com/OReid60/mreader/releases/tag/v0.3.26) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
+[**Download Mreader 0.3.27**](https://github.com/OReid60/mreader/releases/tag/v0.3.27) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
 
 </div>
 
@@ -28,13 +28,13 @@ A reader for Windows, Android phones and tablets, and Linux.
 3. Sign in with the same Mreader account on your devices to sync your library and progress.
 4. Download chapters before going offline. Downloads are stored separately on each device.
 
-Install Android updates over the existing app to keep its data. Source extensions and manga content are not included. Source availability depends on the provider and extension author.
+Install Android updates over the existing app to keep its data. Source extensions, repository links, and manga content are not included. Users obtain and verify repositories independently. Source availability depends on the provider and extension author.
 
-## What’s new in 0.3.26
+## What’s new in 0.3.27
 
-Settings now focuses on reader preferences, accounts, sources, files, and backups. Technical configuration details are hidden. Recent updates also bring smoother category swipes, a more compact mobile title view, stronger progress conflict handling, synced custom covers, and offline reading fixes.
+Mreader no longer includes repository shortcuts, default repository signing keys, or a working example extension. Users provide and verify their own repositories. Settings focuses on reader preferences, accounts, sources, files, and backups. Technical configuration details are hidden. Recent updates also bring smoother category swipes, a more compact mobile title view, stronger progress conflict handling, synced custom covers, and offline reading fixes.
 
-See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.26) for downloads and validation notes.
+See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.27) for downloads and validation notes.
 
 ## Build and contribute
 

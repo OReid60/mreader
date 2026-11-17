@@ -1,4 +1,4 @@
-//! Keiyoushi/Mihon v2 catalogs (gzip + protobuf). IDs stay strings at the UI boundary.
+//! User-supplied v2 catalogs (gzip + protobuf). IDs stay strings at the UI boundary.
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use std::io::Read;

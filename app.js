@@ -55,7 +55,6 @@ async function api(name, args = {}) {
       "source_prefer",
       "extension_install",
       "extension_remove",
-      "extension_example",
     ].includes(name) &&
     typeof queueAccountSync === "function"
   )

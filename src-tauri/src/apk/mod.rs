@@ -14,8 +14,6 @@ use std::{
     time::Instant,
 };
 type Result<T> = std::result::Result<T, String>;
-const KEI: &str = "[user-supplied repository URL]";
-const KEI_KEY: &str = "9add655a78e96c4ec7a53ef89dccb557cb5d767489fac5e785d671a5a75d4da2";
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Repository {
@@ -128,16 +126,7 @@ impl Engine {
     }
     pub async fn repository(&self, url: String, trust_key: Option<String>) -> Result<State> {
         let _guard = self.gate.lock().await;
-        let url = if matches!(
-            url.trim_end_matches('/'),
-            "[user-supplied repository URL]"
-                | "[user-supplied repository URL]"
-                | "[user-supplied repository URL]"
-        ) {
-            KEI.to_string()
-        } else {
-            url
-        };
+        let url = https_url(url.trim())?.to_string().trim_end_matches('/').to_owned();
         let bytes = download(&url, 4 * 1024 * 1024).await?;
         let catalog = index::decode(&bytes)?;
         let mut state = self.state()?;
@@ -145,8 +134,7 @@ impl Engine {
             .repositories
             .iter()
             .find(|r| r.url == url)
-            .map(|r| r.catalog.signing_key.as_str())
-            .or(if url == KEI { Some(KEI_KEY) } else { None });
+            .map(|r| r.catalog.signing_key.as_str());
         let expected = known.or(trust_key.as_deref()).ok_or_else(|| {
             format!(
                 "Trust this repository fingerprint first: {}",
@@ -415,30 +403,34 @@ mod tests {
         );
     }
     #[test]
-    #[ignore = "Live signed Keiyoushi APK / local JVM / publisher network smoke test"]
-    fn live_keiyoushi_kagurabachi() {
+    #[ignore = "Live user-supplied repository and extension smoke test"]
+    fn live_user_supplied_extension() {
         tauri::async_runtime::block_on(async {
             let dir =
                 std::env::temp_dir().join(format!("mreader-apk-smoke-{}", uuid::Uuid::new_v4()));
             let engine = Engine::default();
             engine.set_dir(&dir).unwrap();
-            let catalog = engine.repository(KEI.into(), None).await.unwrap();
-            assert!(catalog.repositories[0].catalog.extensions.len() > 1000);
-            let extension=catalog.repositories[0].catalog.extensions.iter().find(|e|e.package=="eu.kanade.tachiyomi.extension.all.mangaplus").unwrap();
-            let subscription=crate::source_sync::Subscription{package:extension.package.clone(),name:extension.name.clone(),repository:KEI.into(),signing_key:catalog.repositories[0].catalog.signing_key.clone(),version_code:extension.version_code};
+            let repository=std::env::var("MREADER_TEST_REPOSITORY").expect("Supply a repository URL");
+            let fingerprint=std::env::var("MREADER_TEST_FINGERPRINT").expect("Supply its independently verified fingerprint");
+            let package=std::env::var("MREADER_TEST_PACKAGE").expect("Supply a package identifier");
+            let source=std::env::var("MREADER_TEST_SOURCE").expect("Supply a source identifier");
+            let query=std::env::var("MREADER_TEST_QUERY").expect("Supply a search query");
+            let catalog = engine.repository(repository.clone(), Some(fingerprint)).await.unwrap();
+            let extension=catalog.repositories[0].catalog.extensions.iter().find(|e|e.package==package).unwrap();
+            let subscription=crate::source_sync::Subscription{package:extension.package.clone(),name:extension.name.clone(),repository:repository.clone(),signing_key:catalog.repositories[0].catalog.signing_key.clone(),version_code:extension.version_code};
             let choices=std::collections::BTreeMap::from([(format!("apk:{}",extension.package),crate::cloud::Timed{value:crate::source_sync::Choice::Apk(subscription),updated_at:1})]);
             assert!(crate::source_sync::prepare(&engine,&choices,&Default::default()).await.is_empty());
             let installed=std::fs::read(dir.join("state.json")).unwrap();
             assert!(crate::source_sync::prepare(&engine,&choices,&Default::default()).await.is_empty());
             assert_eq!(std::fs::read(dir.join("state.json")).unwrap(),installed);
             let results = engine
-                .search("1998944621602463790", "Kagurabachi", 1)
+                .search(&source, &query, 1)
                 .await
                 .unwrap();
             let mut book = results
                 .books
                 .into_iter()
-                .find(|b| b.title == "Kagurabachi")
+                .next()
                 .unwrap();
             book.chapters = engine.chapters(&book).await.unwrap();
             assert!(!book.chapters.is_empty());

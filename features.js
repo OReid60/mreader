@@ -31,9 +31,7 @@ function filesBackupView(content){
  return `<div class="files-view-toolbar"><h2>Files & backup</h2><div class="button-row">${['list','stacked'].map(value=>button('files-layout',value==='list'?'List':'Stacked','secondary',`data-layout="${value}" aria-pressed="${layout===value}"`)).join('')}</div></div><div class="files-layout files-layout-${layout}">${content}${migrationView()}</div>`;
 }
 function canonicalRepositoryUrl(value){
- const url=value.trim().replace(/\/$/,'');
- if(['[user-supplied repository URL]','[user-supplied repository URL]','[user-supplied repository URL]','[user-supplied repository URL]','[user-supplied repository URL]'].includes(url.toLowerCase()))return '[user-supplied repository URL]';
- return url;
+ try{return new URL(value.trim()).href.replace(/\/$/,'');}catch{return value.trim().replace(/\/$/,'');}
 }
 function installedRepositoryView(){
  const repos=featureState.apk.repositories;
@@ -361,7 +359,7 @@ function apkView() {
   const installed=p=>a.installed.find(e=>e.extension.package===p);
   const layout=state.settings.apkLayout || "list";
   filtered.sort((a,b)=>Number(!!installed(b.extension.package))-Number(!!installed(a.extension.package)) || a.extension.name.localeCompare(b.extension.name));
-  return `<section class="feature-panel apk-panel"><div class="feature-heading"><div><h2>APK source extensions</h2><p>Add a repository you choose, then install its extensions on this device. Your sources and reading progress are shared across your signed-in devices.</p></div></div><p class="feature-note">Install extensions only from repositories you trust. They let Mreader connect to the manga sources you choose.</p>${installedRepositoryView()}<details><summary>Add extension repository</summary><form id="apk-repository-form" class="account-form"><input name="url" type="url" required placeholder="HTTPS repository or index.pb URL" aria-label="Extension repository URL"><label class="fingerprint-toggle"><input id="manual-fingerprint" type="checkbox"> Enter a signing fingerprint manually</label><label id="fingerprint-field" hidden>Repository signing fingerprint<input name="fingerprint" disabled pattern="[a-fA-F0-9]{64}" placeholder="Trusted signing fingerprint (64 hex characters)" aria-label="Repository signing fingerprint"></label><p class="feature-note">Known repositories use their saved signing fingerprint automatically. New repositories may require a fingerprint you verify.</p><button class="secondary" ${featureState.apkBusy?"disabled":""}>Add repository</button></form></details>${featureState.apkBusy?'<p role="status"><span class="spinner"></span> Preparing extension…</p>':""}${featureState.apkError?`<p class="notice" role="alert">${esc(featureState.apkError)}</p>`:""}${entries.length?`<label class="apk-search-label">Find an extension<input id="apk-search" type="search" value="${esc(featureState.apkQuery)}" placeholder="Source name or language (default: English)"></label><div class="apk-display-controls" role="group" aria-label="Extension layout">${button("apk-layout","List",layout==="list"?"primary":"secondary",'data-layout="list" aria-pressed="'+(layout==="list")+'"')}${button("apk-layout","Stacked",layout==="stacked"?"primary":"secondary",'data-layout="stacked" aria-pressed="'+(layout==="stacked")+'"')}</div><p class="sub">${filtered.length} matching packages · ${a.installed.length} installed on this device</p><div class="apk-extension-results apk-layout-${layout}">${filtered.slice(0,60).map(({extension:e,repository})=>{const old=installed(e.package),up=old&&old.extension.versionCode<e.versionCode;return `<div class="extension-row"><div class="extension-identity">${extensionIcon(e)}<div><b>${esc(e.name)}</b><small>${esc(e.version)} · ${[...new Set(e.sources.map(s=>s.language))].map(esc).join(", ")}${e.contentWarning>=2?" · Mature content":""}</small></div></div><div class="button-row">${!old||up?button("apk-install",up?"Update":"Install","secondary",`data-package="${esc(e.package)}" data-repository="${esc(repository)}" ${featureState.apkBusy?"disabled":""}`):'<span class="connection-pill">Installed</span>'}${old?extensionFlagButton("apk:"+e.package):""}${old?button("apk-remove",featureState.cloud.signedIn?"Remove everywhere":"Uninstall","secondary",`data-package="${esc(e.package)}" ${featureState.apkBusy?"disabled":""}`):""}</div></div>`}).join("")}</div>${filtered.length>60?'<p class="sub">Showing 60 results. Search to narrow the list.</p>':""}`:'<p class="sub">Add a repository to browse installable sources.</p>'}<p class="feature-note">Flags are your manual notes on this device. They do not uninstall or disable an extension. A working website may still have an outdated or incompatible extension. Installed source choices sync with your account; each device prepares its own copy. Uninstalling preserves your library and progress. A source may require its own website account or verification; installing an extension does not grant access.</p></section>`;
+  return `<section class="feature-panel apk-panel"><div class="feature-heading"><div><h2>APK source extensions</h2><p>Mreader does not provide extension lists. Add a repository you obtained independently, then install its extensions on this device. Your sources and reading progress are shared across your signed-in devices.</p></div></div><p class="feature-note">Install extensions only from repositories you trust. They let Mreader connect to the manga sources you choose.</p>${installedRepositoryView()}<details><summary>Add extension repository</summary><form id="apk-repository-form" class="account-form"><input name="url" type="url" required placeholder="HTTPS repository or index.pb URL" aria-label="Extension repository URL"><label class="fingerprint-toggle"><input id="manual-fingerprint" type="checkbox"> Enter a signing fingerprint manually</label><label id="fingerprint-field" hidden>Repository signing fingerprint<input name="fingerprint" disabled pattern="[a-fA-F0-9]{64}" placeholder="Trusted signing fingerprint (64 hex characters)" aria-label="Repository signing fingerprint"></label><p class="feature-note">Previously added repositories use their saved fingerprint. For a new repository, enter the signing fingerprint you obtained and verified independently.</p><button class="secondary" ${featureState.apkBusy?"disabled":""}>Add repository</button></form></details>${featureState.apkBusy?'<p role="status"><span class="spinner"></span> Preparing extension…</p>':""}${featureState.apkError?`<p class="notice" role="alert">${esc(featureState.apkError)}</p>`:""}${entries.length?`<label class="apk-search-label">Find an extension<input id="apk-search" type="search" value="${esc(featureState.apkQuery)}" placeholder="Source name or language (default: English)"></label><div class="apk-display-controls" role="group" aria-label="Extension layout">${button("apk-layout","List",layout==="list"?"primary":"secondary",'data-layout="list" aria-pressed="'+(layout==="list")+'"')}${button("apk-layout","Stacked",layout==="stacked"?"primary":"secondary",'data-layout="stacked" aria-pressed="'+(layout==="stacked")+'"')}</div><p class="sub">${filtered.length} matching packages · ${a.installed.length} installed on this device</p><div class="apk-extension-results apk-layout-${layout}">${filtered.slice(0,60).map(({extension:e,repository})=>{const old=installed(e.package),up=old&&old.extension.versionCode<e.versionCode;return `<div class="extension-row"><div class="extension-identity">${extensionIcon(e)}<div><b>${esc(e.name)}</b><small>${esc(e.version)} · ${[...new Set(e.sources.map(s=>s.language))].map(esc).join(", ")}${e.contentWarning>=2?" · Mature content":""}</small></div></div><div class="button-row">${!old||up?button("apk-install",up?"Update":"Install","secondary",`data-package="${esc(e.package)}" data-repository="${esc(repository)}" ${featureState.apkBusy?"disabled":""}`):'<span class="connection-pill">Installed</span>'}${old?extensionFlagButton("apk:"+e.package):""}${old?button("apk-remove",featureState.cloud.signedIn?"Remove everywhere":"Uninstall","secondary",`data-package="${esc(e.package)}" ${featureState.apkBusy?"disabled":""}`):""}</div></div>`}).join("")}</div>${filtered.length>60?'<p class="sub">Showing 60 results. Search to narrow the list.</p>':""}`:'<p class="sub">Add a repository to browse installable sources.</p>'}<p class="feature-note">Flags are your manual notes on this device. They do not uninstall or disable an extension. A working website may still have an outdated or incompatible extension. Installed source choices sync with your account; each device prepares its own copy. Uninstalling preserves your library and progress. A source may require its own website account or verification; installing an extension does not grant access.</p></section>`;
 }
 async function apkAction(command,args) {
   if(featureState.apkBusy)return;
@@ -741,30 +739,6 @@ async function runVerification(plan) {
         (p) => p.bookId === remoteBook.id && p.page === 1,
       ),
     );
-    featureState.extensions = await api("extension_example");
-    const extCatalog = await api("search_source", {
-      source: "ext:org.mreader.mangadex",
-      query: "Everyday Host",
-      offset: 0,
-    });
-    check("native-extension-search", extCatalog.books.length > 0);
-    applySnapshot(await api("add_book", { book: extCatalog.books[0] }));
-    const extBook = await api("chapters", {
-      bookId: extCatalog.books[0].id,
-      refresh: false,
-    });
-    state.books = state.books.map((b) => (b.id === extBook.id ? extBook : b));
-    check("native-extension-chapters", extBook.chapters.length > 0);
-    const extChapter =
-      extBook.chapters.find((c) => c.pages > 0 && c.pages <= 12) ||
-      extBook.chapters[0];
-    await openReader(extBook.id, extChapter.id, 0);
-    await document.querySelector(".reading-page").decode();
-    check(
-      "native-extension-page-render",
-      document.querySelector(".reading-page").naturalWidth > 0,
-    );
-    closeReader();
     const offline = await api("download_chapter", {
       bookId: remoteBook.id,
       chapterId: chapter.id,

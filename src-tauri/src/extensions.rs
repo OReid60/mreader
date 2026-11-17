@@ -481,10 +481,10 @@ mod tests {
     #[test]
     fn validates_host_permissions_and_rejects_scripts() {
         let e: Extension =
-            serde_json::from_str(include_str!("../../extensions/mangadex.mreader.json")).unwrap();
+            serde_json::from_str(include_str!("../../tests/fixtures/native-source.json")).unwrap();
         e.validate().unwrap();
         assert!(e.check_url("https://evil.example/image").is_err());
-        assert!(e.check_url("http://api.mangadex.org/image").is_err());
+        assert!(e.check_url("http://api.example.invalid/image").is_err());
         let mut v = serde_json::to_value(e).unwrap();
         v["script"] = Value::String("alert(1)".into());
         assert!(serde_json::from_value::<Extension>(v).is_err());
@@ -509,7 +509,7 @@ mod tests {
         tauri::async_runtime::block_on(async {
             let sources = Sources::new().unwrap();
             let mut extension: Extension =
-                serde_json::from_str(include_str!("../../extensions/mangadex.mreader.json"))
+                serde_json::from_str(include_str!("../../tests/fixtures/native-source.json"))
                     .unwrap();
             extension.base_url = format!("http://{address}");
             extension.allowed_hosts = vec!["127.0.0.1".into()];

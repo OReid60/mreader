@@ -206,7 +206,7 @@ const { pathToFileURL } = require('node:url');
     await desktop.evaluate(()=>navigate('Library'));
     assert.equal(await desktop.locator('.category-tabs [data-category="Desktop group"]').count(),1);
     await desktop.evaluate(()=>navigate('Settings'));
-    assert.equal(await desktop.locator('[data-action="apk-keiyoushi"]').count(),0);
+    assert.equal(await desktop.locator('[data-action="apk-add-preset"]').count(),0);
     assert.equal(await desktop.locator('[data-action="extension-example"]').count(),0);
     assert.equal(await desktop.locator('input[name="dataSaver"]').count(),0);
     await desktop.getByRole('tab',{name:'Account & sync',exact:true}).click();

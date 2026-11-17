@@ -1,6 +1,6 @@
 # Reader customization in 0.3.21
 
-- Sources lists added repositories by name, such as Keiyoushi, with an Added badge
+- Sources lists added repositories by name, using the name supplied by the repository, with an Added badge
   and Refresh list action. Common aliases for the same repository are recognized
   before adding it again.
 - Files & backup has persistent List and Stacked layouts. App data location is

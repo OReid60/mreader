@@ -956,12 +956,6 @@ async fn extension_install(
     core.sources.extensions.list()
 }
 #[tauri::command]
-async fn extension_example(core: State<'_, Arc<Core>>) -> Result<Vec<extensions::Extension>> {
-    let manifest = serde_json::from_str(include_str!("../../extensions/mangadex.mreader.json"))
-        .map_err(|e| e.to_string())?;
-    extension_install(core, manifest).await
-}
-#[tauri::command]
 async fn extension_remove(
     core: State<'_, Arc<Core>>,
     id: String,
@@ -1199,7 +1193,6 @@ pub fn run() {
             source_prefer,
             extension_install,
             extension_remove,
-            extension_example,
             cloud_status,
             cloud_configure,
             mobile_download_start,

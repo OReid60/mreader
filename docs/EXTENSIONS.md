@@ -1,8 +1,8 @@
 # Mreader native extensions, schema v1
 
-This document describes Mreader's native JSON extension format. The same manifest and stable identifiers work on desktop and Android. For executable Keiyoushi APKs and repository installation, see [APK extensions](apk-extensions.md). The supplied [MangaDex manifest](../extensions/mangadex.mreader.json) is a complete JSON example.
+This document describes Mreader's native JSON extension format. The same manifest and stable identifiers work on desktop and Android. For user-provided APKs and repository installation, see [APK extensions](apk-extensions.md). Mreader does not supply extension packages, repository links, or pretrusted repository keys. The nonfunctional test fixture uses reserved example domains.
 
-Install from **Settings → Native source extensions → Import manifest**. The review shows the declared hosts before installation. Import a newer version with the same `id` to update it. Export and uninstall are also available. Removing an extension preserves title metadata and progress so reinstalling can reconnect them.
+Install from **Settings → Sources → Custom source extensions → Import manifest**. The review shows the declared hosts before installation. Import a newer version with the same `id` to update it. Export and uninstall are also available. Removing an extension preserves title metadata and progress so reinstalling can reconnect them.
 
 ## Contract
 
