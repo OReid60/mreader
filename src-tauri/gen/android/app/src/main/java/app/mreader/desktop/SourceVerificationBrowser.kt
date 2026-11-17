@@ -1,0 +1,32 @@
+package app.mreader.desktop
+import android.app.Dialog
+import android.webkit.*
+import android.widget.*
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import java.lang.ref.WeakReference
+object SourceVerificationBrowser {
+ var activity:WeakReference<MainActivity>?=null
+ private var dialog:Dialog?=null
+ fun open(url:String,agent:String){
+  val current=activity?.get()?:error("Reader activity is unavailable")
+  Handler(Looper.getMainLooper()).post {
+   dialog?.dismiss()
+   val base=Uri.parse(url);val host=base.host?.removePrefix("www.");val port=if(base.port<0)443 else base.port
+   val content=LinearLayout(current).apply{orientation=LinearLayout.VERTICAL}
+   val browser=WebView(current).apply{
+    settings.javaScriptEnabled=true;settings.domStorageEnabled=true;settings.userAgentString=agent
+    settings.allowFileAccess=false;settings.allowContentAccess=false;settings.mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW
+    webViewClient=object:WebViewClient(){override fun shouldOverrideUrlLoading(view:WebView,request:WebResourceRequest):Boolean {val next=request.url;return request.isForMainFrame&&(next.scheme!="https"||next.host?.removePrefix("www.")!=host||(if(next.port<0)443 else next.port)!=port||next.userInfo!=null)};override fun onReceivedSslError(view:WebView,handler:SslErrorHandler,error:android.net.http.SslError){handler.cancel()}}
+    setDownloadListener{_,_,_,_,_->};CookieManager.getInstance().setAcceptCookie(true)
+   }
+   val close=Button(current).apply{text="Return to source manager";setOnClickListener{CookieManager.getInstance().flush();dialog?.dismiss()}}
+   content.addView(close);content.addView(browser,LinearLayout.LayoutParams(-1,0,1f))
+   val shown=Dialog(current,android.R.style.Theme_DeviceDefault_NoActionBar)
+   shown.setContentView(content);shown.setOnDismissListener{browser.destroy();if(dialog===shown)dialog=null};dialog=shown;shown.show();shown.window?.setLayout(-1,-1)
+   browser.loadUrl(url)
+  }
+ }
+ fun finish(){CookieManager.getInstance().flush();Handler(Looper.getMainLooper()).post{dialog?.dismiss()}}
+}

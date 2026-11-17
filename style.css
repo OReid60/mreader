@@ -1531,3 +1531,5 @@ body.mobile-layout, body.mobile-layout.light {
 .browse-source-issue small{color:var(--muted);line-height:1.4}
 .browse-source-notice button{max-width:100%}
 .mobile-layout .browse-source-notice{margin:0 8px 10px}
+
+.source-manager-filter{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.source-manager-filter select{max-width:100%;min-width:180px}.source-manager-skips{margin-top:16px}.source-manager-skips summary{cursor:pointer;font-weight:600}.source-manager-skips>p{color:var(--muted)}

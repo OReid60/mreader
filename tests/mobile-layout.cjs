@@ -135,7 +135,7 @@ const { pathToFileURL } = require('node:url');
     assert(await phone.locator('[data-action="apk-remove"]').isVisible());
     assert(await phone.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     await phone.locator('.mobile-bottom [data-page="Browse"]').click();
-    assert.equal(await phone.locator('#source option[value="apk:1998944621602463790"]').count(),1);
+    assert.equal(await phone.evaluate(()=>userSources().filter(s=>s.id==='apk:1998944621602463790').length),1);
     await phone.locator('.mobile-bottom [data-page="Settings"]').click();
     await phone.locator('[data-action="apk-remove"]').click();
     await phone.waitForFunction(()=>featureState.apk.installed.length===0);
@@ -249,12 +249,12 @@ const { pathToFileURL } = require('node:url');
     await desktop.screenshot({path:path.join(output,'desktop-settings-compact.png')});
     for(const device of [phone,desktop]){
       await device.evaluate(async()=>{featureState.cloud.signedIn=true;featureState.browseSourceChosen=false;state.source='all';await navigate('Browse');await syncAccount();});
-      assert.equal(await device.locator('#source').inputValue(),'all');
-      assert.equal(await device.locator('#source option[value="apk:1998944621602463790"]').count(),1);
+      assert.equal(await device.evaluate(()=>state.source),'all');
+      assert.equal(await device.evaluate(()=>userSources().filter(s=>s.id==='apk:1998944621602463790').length),1);
     }
     await desktop.screenshot({path:path.join(output,'desktop-browse-synced.png')});
     await phone.evaluate(()=>{state.settings.komgaUrl='https://fixture.test';render();});
-    await phone.locator('#source').selectOption('komga');
+    await phone.evaluate(async()=>{featureState.settingsTab='sources';await navigate('Settings');});await phone.locator('#source-manager-select').selectOption('komga');await phone.evaluate(()=>navigate('Browse'));
     await phone.waitForFunction(()=>window.chosenSource==='komga'&&state.source==='komga');
     await phone.evaluate(async()=>{window.failSourceSync=true;await syncAccount();await navigate('Settings');});
     assert(await phone.getByRole('button',{name:'Remove from synced sources'}).isVisible());

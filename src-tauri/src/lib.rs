@@ -1,4 +1,5 @@
 mod mobile_download;
+mod source_browser;
 mod custom_cover;
 mod shutdown_trace;
 mod downloads;
@@ -26,6 +27,7 @@ use tauri::{Emitter, Manager, State};
 type Result<T> = std::result::Result<T, String>;
 struct Core {
     mobile_download: mobile_download::Service,
+    source_browser: source_browser::Service,
     store: store::Store,
     local: local::LocalReader,
     sources: sources::Sources,
@@ -51,6 +53,7 @@ impl Core {
         let queue=downloads::Queue::default();queue.load(&store)?;
         Ok(Self {
             mobile_download: mobile_download::Service::default(),
+            source_browser: source_browser::Service::default(),
             store,
             local: local::LocalReader::new(),
             sources,
@@ -989,6 +992,10 @@ async fn cloud_configure(
     Err("Managed service settings are fixed for this build".into())
 }
 #[tauri::command]
+async fn source_verification_open(core:State<'_,Arc<Core>>,app:tauri::AppHandle,source:String)->Result<serde_json::Value>{core.source_browser.open(&core,&app,source).await}
+#[tauri::command]
+async fn source_verification_finish(core:State<'_,Arc<Core>>,app:tauri::AppHandle,id:String,cancel:bool)->Result<serde_json::Value>{core.source_browser.finish(&core,&app,id,cancel).await}
+#[tauri::command]
 fn mobile_download_start(core: State<Arc<Core>>, address: Option<String>) -> Result<serde_json::Value> {
     #[cfg(not(target_os="android"))]
     {serde_json::to_value(core.mobile_download.start(address)?).map_err(|e|e.to_string())}
@@ -1157,7 +1164,9 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(|invoke| {
+            if invoke.message.webview_ref().label()!="main" {invoke.resolver.reject("Source websites cannot access reader commands");return true;}
+            let handler:fn(tauri::ipc::Invoke<tauri::Wry>)->bool=tauri::generate_handler![
             snapshot,
             search_source,
             preview_source_book,
@@ -1201,8 +1210,10 @@ pub fn run() {
             cloud_logout,
             cloud_sync,
             verification_plan,
-            verification_finish
-        ])
+            verification_finish,
+            source_verification_open,
+            source_verification_finish
+        ];handler(invoke)})
         .build(context)
         .expect("Mreader failed to start")
         .run(|app, event| {
@@ -1217,7 +1228,8 @@ pub fn run() {
                 shutdown_trace::event("window.close_requested");
                 let busy = app.state::<Arc<Core>>().queue.busy();
                 shutdown_trace::event(if busy {"window.close.download_busy"} else {"window.close.download_idle"});
-                if busy {
+                if !busy && label=="main" {for (name,window) in app.webview_windows(){if name.starts_with("source-verification-"){let _=window.destroy();}}}
+                if busy && label=="main" {
                     api.prevent_close();
                     shutdown_trace::event("window.close.prevented");
                     if let Some(w)=app.get_webview_window(label){

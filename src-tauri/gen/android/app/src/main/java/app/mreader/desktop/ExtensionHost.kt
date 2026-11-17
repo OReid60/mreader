@@ -91,6 +91,9 @@ object ExtensionHost {
                 else -> {
                     val source=sources[args.getString("sourceId")] ?: error("Install this extension on this device before reading")
                     when(args.getString("operation")) {
+                        "source_info" -> {val http=source as? HttpSource ?: error("This source does not provide a website");JSONObject().put("url",http.baseUrl).put("userAgent",http.headers["User-Agent"] ?: NetworkHelper(context).defaultUserAgentProvider())}
+                        "verification_open" -> {SourceVerificationBrowser.open(args.getString("url"),args.getString("userAgent"));JSONObject()}
+                        "verification_finish" -> {SourceVerificationBrowser.finish();JSONObject().put("cookies",0)}
                         "search" -> {
                             val query=args.optString("query")
                             val page=args.optInt("page",1)

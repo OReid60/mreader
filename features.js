@@ -2,6 +2,7 @@
 const featureState = {
   settingsTab: "general",
   browseSourceChosen: false,
+  sourceVerification: null,
   mobileDownload: null,
   mobileDownloadError: "",
   mobileDownloadBusy: false,
@@ -222,15 +223,15 @@ function skipFailedSource(source,error){
  const version=sourceVersion(source.id);if(version===null)return;
  const records=sourceSkipData();records[source.id]={version,kind,reason:browseProblemMessage(error),checkedAt:Date.now(),retryAfter:kind==='network'?Date.now()+300000:0};saveSourceSkips();
 }
-function sourceSkipActions(id){return `${button('source-check','Retry source','secondary',`data-source-id="${esc(id)}" ${state.loading||sourceChecks.has(id)?'disabled':''}`)}${sourceIsSkipped(id)?button('source-enable','Re-enable','secondary',`data-source-id="${esc(id)}" ${state.loading||sourceChecks.has(id)?'disabled':''}`):''}`;}
+function sourceSkipActions(id){return `${id.startsWith('apk:')&&sourceSkipStatus(id)?.kind!=='region'?button('source-verify','Verify in browser','secondary',`data-source-id="${esc(id)}" ${state.loading||sourceChecks.has(id)?'disabled':''}`):''}${button('source-check','Retry source','secondary',`data-source-id="${esc(id)}" ${state.loading||sourceChecks.has(id)?'disabled':''}`)}${sourceIsSkipped(id)?button('source-enable','Re-enable','secondary',`data-source-id="${esc(id)}" ${state.loading||sourceChecks.has(id)?'disabled':''}`):''}`;}
 function sourceSkipRow(source){
  const item=sourceSkipStatus(source.id);if(!item)return '';
  const status=item.retryAfter?`Skipped temporarily · eligible again in ${Math.max(1,Math.ceil((item.retryAfter-Date.now())/60000))} min`:'Skipped in All until you retry or re-enable it';
  return `<div class="browse-source-issue"><b>${esc(source.name)}</b><small>${esc(item.reason)}</small><small>${esc(status)}</small><div class="button-row">${sourceSkipActions(source.id)}</div></div>`;
 }
 function sourceAvailabilityView(){
- const skipped=skippedSources();
- return `<details class="feature-panel source-availability-panel"><summary>Source availability · ${skipped.length} skipped in All</summary><p>Sources that fail are skipped automatically in All installed sources on this device. They remain installed and available for individual selection. Network failures pause a source for five minutes; other failures stay skipped until a successful retry, re-enabling, or an extension update.</p>${sourceSkipSaveFailed?'<p class="notice">Skip settings could not be saved and may reset after restart.</p>':''}${skipped.length?`<div class="browse-source-issues">${skipped.map(sourceSkipRow).join('')}</div>`:'<p class="sub">No sources are currently skipped.</p>'}</details>`;
+ const skipped=skippedSources(),session=featureState.sourceVerification;
+ return `<section class="feature-panel source-availability-panel"><div class="feature-heading"><div><h2>Source manager</h2><p>Choose the sources used by Browse and manage sources skipped in All.</p></div></div><label class="source-manager-filter">Browse source<select id="source-manager-select">${sourceOptions()}</select></label><p class="sub">All combines working installed sources. Individual selection checks that source directly. The selection applies to this session.</p>${session?`<div class="notice" role="status"><b>Browser verification opened</b><p>Complete verification in the source browser, then return here. This is a user-controlled website session; some sites may still refuse it.</p><div class="button-row">${button('source-verify-finish','Finish verification and retry','primary')}${button('source-verify-cancel','Cancel','secondary')}</div></div>`:''}<details class="source-manager-skips" ${skipped.length?'open':''}><summary>${skipped.length} ${skipped.length===1?'source':'sources'} skipped in All</summary><p>Sources remain installed. Network failures pause for five minutes; other failures stay skipped until retry, re-enabling, or an extension update. Browser verification does not remove country restrictions.</p>${sourceSkipSaveFailed?'<p class="notice">Skip settings could not be saved and may reset after restart.</p>':''}${skipped.length?`<div class="browse-source-issues">${skipped.map(sourceSkipRow).join('')}</div>`:'<p class="sub">No sources are currently skipped.</p>'}</details></section>`;
 }
 async function checkSourceAvailability(id){
  if(sourceChecks.has(id))return;const source=userSources().find(s=>s.id===id);if(!source)return;
@@ -465,6 +466,12 @@ document.addEventListener("input", e=>{
 document.addEventListener('click',async event=>{
  const t=event.target.closest('[data-action]');if(!t)return;
  if(t.dataset.action==='browse-retry-failed'&&!state.loading){const ids=[...new Set([...browseFailures.keys(),...(state.source==='all'?skippedSources().map(s=>s.id):[])])];if(ids.length)await searchSource(false,true,ids);}
+ if(t.dataset.action==='source-verify'&&!sourceChecks.has(t.dataset.sourceId)){
+  const id=t.dataset.sourceId;sourceChecks.add(id);render();
+  try{if(featureState.sourceVerification)await api('source_verification_finish',{id:featureState.sourceVerification.id,cancel:true});featureState.sourceVerification=await api('source_verification_open',{source:id});}
+  catch(error){toast(error);}finally{sourceChecks.delete(id);render();}
+ }
+ if(['source-verify-finish','source-verify-cancel'].includes(t.dataset.action)&&featureState.sourceVerification){const session=featureState.sourceVerification;featureState.sourceVerification=null;try{await api('source_verification_finish',{id:session.id,cancel:t.dataset.action==='source-verify-cancel'});if(t.dataset.action==='source-verify-finish')await checkSourceAvailability(session.source);}catch(error){toast(error);}render();}
  if(t.dataset.action==='source-enable'&&!state.loading&&!sourceChecks.has(t.dataset.sourceId)){clearSourceSkip(t.dataset.sourceId);browseFailures.delete(t.dataset.sourceId);render();toast('Source enabled for the next All sources refresh.');}
  if(t.dataset.action==='source-check'&&!state.loading){const id=t.dataset.sourceId;if(state.page==='Browse'&&(state.source==='all'||state.source===id))await searchSource(false,true,state.source==='all'?[id]:null);else await checkSourceAvailability(id);}
  if(t.dataset.action==='repository-refresh')await apkAction('apk_repository',{url:t.dataset.repository,trustKey:null});

@@ -16,6 +16,7 @@ const JAR_SHA: &str = "af9feb20af9d7ebe9e30769e6c6ebc7fc7ab1c447388d42e0280b1da5
 struct Connection {
     url: String,
     password: String,
+    session_port: u16,
 }
 struct Server {
     child: Child,
@@ -87,11 +88,15 @@ impl Desktop {
         let connection = Connection {
             url: format!("http://127.0.0.1:{port}"),
             password: uuid::Uuid::new_v4().to_string(),
+            session_port: std::net::TcpListener::bind("127.0.0.1:0").map_err(|e|e.to_string())?.local_addr().map_err(|e|e.to_string())?.port(),
         };
         let state = dir.join("state");
         std::fs::create_dir_all(&state).map_err(|e| e.to_string())?;
         let log = std::fs::File::create(dir.join("runtime.log")).map_err(|e| e.to_string())?;
+        let agent=dir.join("source-session-agent.jar");
+        std::fs::write(&agent,include_bytes!("../../../resources/runtime/source-session-agent.jar")).map_err(|e|e.to_string())?;
         let mut command = Command::new(java);
+        command.env("MREADER_SESSION_TOKEN",&connection.password).arg(format!("-javaagent:{}={}",agent.display(),connection.session_port));
         command.args([
             "-Xms32m",
             "-Xmx384m",
@@ -162,6 +167,16 @@ impl Desktop {
         let c = self.start().await?;
         match args["operation"].as_str().unwrap_or("") {
             "load" => Ok(json!({})),
+            "source_info" => {
+                let data=gql(&c,"query($id:LongString!){source(id:$id){baseUrl}}",json!({"id":args["sourceId"]})).await?;
+                let user_agent=session_call(c.clone(),"agent".into(),vec![args["sourceId"].as_str().unwrap_or("").into()]).await?;
+                Ok(json!({"url":data["source"]["baseUrl"],"userAgent":user_agent}))
+            },
+            "verification_finish" => {
+                let mut values=vec![args["url"].as_str().ok_or("Missing source URL")?.to_string()];
+                for cookie in args["cookies"].as_array().ok_or("Missing browser session")?{values.push(cookie.as_str().ok_or("Invalid session cookie")?.to_string());}
+                let count=session_call(c,"cookies".into(),values).await?;Ok(json!({"cookies":count.parse::<usize>().unwrap_or(0)}))
+            },
             "install" => {
                 let repo=args["repository"].as_str().ok_or("Missing repository")?;
                 // Suwayomi validates the APK against the catalog signing fingerprint.
@@ -292,7 +307,7 @@ fn client() -> Result<&'static reqwest::Client> {
     _=>{assert!(header.starts_with("get /api/v1/manga/7/thumbnail "));("200 OK","fresh-cover".into())}
    };write!(socket,"HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
   }});
-  let c=Connection{url:format!("http://{address}"),password:"fixture-only".into()};
+  let c=Connection{url:format!("http://{address}"),password:"fixture-only".into(),session_port:0};
   let result=tauri::async_runtime::block_on(recover_cover_image(&c,"/api/v1/manga/7/thumbnail",&json!({"sourceId":"fixture-source","page":{"mangaUrl":"/exact","mangaTitle":"Fixture title"}}))).unwrap();assert_eq!(result,b"fresh-cover");server.join().unwrap();
  }
 }
@@ -539,4 +554,19 @@ async fn download_runtime(url: &str, path: &Path, expected: &str) -> Result<()> 
         return Err("Runtime checksum mismatch".into());
     }
     Ok(())
+}
+
+async fn session_call(c:Connection,operation:String,values:Vec<String>)->Result<String>{
+ tauri::async_runtime::spawn_blocking(move||{
+  use std::io::{Read,Write};
+  let mut socket=std::net::TcpStream::connect_timeout(&format!("127.0.0.1:{}",c.session_port).parse().unwrap(),std::time::Duration::from_secs(5)).map_err(|e|e.to_string())?;
+  socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).map_err(|e|e.to_string())?;
+  socket.set_write_timeout(Some(std::time::Duration::from_secs(5))).map_err(|e|e.to_string())?;
+  fn frame(s:&mut std::net::TcpStream,text:&str)->Result<()>{let bytes=text.as_bytes();if bytes.len()>65536{return Err("Session value too large".into());}s.write_all(&(bytes.len() as u32).to_be_bytes()).and_then(|_|s.write_all(bytes)).map_err(|e|e.to_string())}
+  frame(&mut socket,&c.password)?;frame(&mut socket,&operation)?;
+  for (index,value) in values.iter().enumerate(){frame(&mut socket,value)?;if operation=="cookies"&&index==0{if values.len()>129{return Err("Too many cookies".into())}socket.write_all(&((values.len()-1) as u32).to_be_bytes()).map_err(|e|e.to_string())?;}}
+  let mut ok=[0];socket.read_exact(&mut ok).map_err(|e|e.to_string())?;let mut length=[0;4];socket.read_exact(&mut length).map_err(|e|e.to_string())?;
+  let size=u32::from_be_bytes(length) as usize;if size>65536{return Err("Invalid session response".into())}let mut bytes=vec![0;size];socket.read_exact(&mut bytes).map_err(|e|e.to_string())?;let text=String::from_utf8(bytes).map_err(|e|e.to_string())?;
+  if ok[0]==1{Ok(text)}else{Err(text)}
+ }).await.map_err(|e|e.to_string())?
 }

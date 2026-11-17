@@ -69,6 +69,7 @@ class MainActivity : TauriActivity() {
       navigationBarStyle = SystemBarStyle.dark(Color.rgb(44, 19, 12))
     )
     super.onCreate(savedInstanceState)
+    SourceVerificationBrowser.activity=java.lang.ref.WeakReference(this)
     findViewById<View>(android.R.id.content).setBackgroundColor(Color.rgb(27, 9, 5))
     ViewCompat.setOnApplyWindowInsetsListener(findViewById<View>(android.R.id.content)) { view, insets ->
       val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())

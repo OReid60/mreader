@@ -247,6 +247,9 @@ impl Engine {
             .ok_or("Install this APK extension on this device before reading synced titles")?;
         self.runtime.load(&e, &self.dir()?).await
     }
+    pub async fn source_info(&self,id:&str)->Result<Value>{self.ready(id).await?;self.runtime.call(json!({"operation":"source_info","sourceId":id})).await}
+    pub async fn verification_open(&self,id:&str,url:&str,agent:&str)->Result<Value>{self.ready(id).await?;self.runtime.call(json!({"operation":"verification_open","sourceId":id,"url":url,"userAgent":agent})).await}
+    pub async fn verification_finish(&self,id:&str,url:&str,cookies:Vec<String>)->Result<Value>{self.ready(id).await?;self.runtime.call(json!({"operation":"verification_finish","sourceId":id,"url":url,"cookies":cookies})).await}
     pub async fn search(&self, id: &str, query: &str, page: usize) -> Result<Catalog> {
         self.ready(id).await?;
         let v = self
