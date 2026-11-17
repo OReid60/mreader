@@ -6,4 +6,4 @@ Users obtain repository addresses independently and verify signing fingerprints 
 
 Documentation and automated tests use synthetic fixture domains. Optional live tests require externally provided repository details or local APK fixtures. No test fixture source APK is shipped in production releases.
 
-This policy controls the contents of new releases. It does not remove historical commits or earlier release assets. Repository owners can still see prior Git history.
+Older published releases, their tags, and old build artifacts have been removed. Published branch and release-tag history has been rewritten to remove the extension repository links. Existing clones, cached commit pages, or other copies may still retain earlier contents. After the rewrite, collaborators should clone again instead of pushing an old branch.
