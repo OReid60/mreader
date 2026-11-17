@@ -784,6 +784,7 @@ function closeReader() {
   if(returnDetail && bookById(returnDetail)){state.detail=bookById(returnDetail);renderDetails();}
 }
 function handleAppBack() {
+  const coverSearch=document.querySelector("#cover-image-search");if(coverSearch){coverSearch.remove();return true;}
   if(state.reader || state.detail || state.mobileSearch || navigationHistory.length || document.querySelector('#mobile-sheet') || state.page!=='Library')lastRootBack=0;
   if(document.querySelector('#mobile-sheet')){closeMobileSheet();return true;}
   if(state.reader){closeReader();return true;}

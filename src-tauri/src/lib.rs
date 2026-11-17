@@ -463,6 +463,25 @@ async fn cover_data(core: State<'_, Arc<Core>>, book: Book) -> Result<tauri::ipc
         .map(tauri::ipc::Response::new)
 }
 #[tauri::command]
+async fn cover_image_search(core:State<'_,Arc<Core>>,app:tauri::AppHandle,book_id:String)->Result<()> {
+    let book=core.store.book(&book_id)?;
+    let mut url=tauri::Url::parse("https://www.google.com/search").map_err(|e|e.to_string())?;
+    url.query_pairs_mut().append_pair("tbm","isch").append_pair("q",&format!("{} manga cover",book.title));
+    #[cfg(not(target_os="android"))] {
+        let monitor=app.get_webview_window("main").ok_or("Reader window unavailable")?.current_monitor().map_err(|e|e.to_string())?.ok_or("Reader display unavailable")?;
+        let scale=monitor.scale_factor();let pos=monitor.position();let size=monitor.size();
+        tauri::WebviewWindowBuilder::new(&app,format!("cover-search-{}",uuid::Uuid::new_v4()),tauri::WebviewUrl::External(url))
+            .title("Cover images - save an image, then return to Mreader")
+            .inner_size((size.width as f64/scale-80.0).min(1100.0),(size.height as f64/scale-100.0).min(820.0))
+            .position(pos.x as f64/scale+30.0,pos.y as f64/scale+30.0).focused(false)
+            .on_navigation(|next|next.scheme()=="https"&&next.username().is_empty()&&next.password().is_none())
+            .on_new_window(|_,_|tauri::webview::NewWindowResponse::Deny)
+            .build().map_err(|e|e.to_string())?;
+    }
+    #[cfg(target_os="android")] {let _=(app,url);return Err("Use the Android image search action".into());}
+    #[allow(unreachable_code)] Ok(())
+}
+#[tauri::command]
 async fn set_custom_cover(core:State<'_,Arc<Core>>,request:tauri::ipc::Request<'_>)->Result<tauri::ipc::Response>{
     let id=request.headers().get("x-mreader-book").and_then(|v|v.to_str().ok()).ok_or("Missing manga identity")?;
     let id=percent_encoding::percent_decode_str(id).decode_utf8().map_err(|e|e.to_string())?.into_owned();
@@ -1211,6 +1230,7 @@ pub fn run() {
             cloud_sync,
             verification_plan,
             verification_finish,
+            cover_image_search,
             source_verification_open,
             source_verification_finish
         ];handler(invoke)})
@@ -1228,7 +1248,7 @@ pub fn run() {
                 shutdown_trace::event("window.close_requested");
                 let busy = app.state::<Arc<Core>>().queue.busy();
                 shutdown_trace::event(if busy {"window.close.download_busy"} else {"window.close.download_idle"});
-                if !busy && label=="main" {for (name,window) in app.webview_windows(){if name.starts_with("source-verification-"){let _=window.destroy();}}}
+                if !busy && label=="main" {for (name,window) in app.webview_windows(){if name.starts_with("source-verification-")||name.starts_with("cover-search-"){let _=window.destroy();}}}
                 if busy && label=="main" {
                     api.prevent_close();
                     shutdown_trace::event("window.close.prevented");

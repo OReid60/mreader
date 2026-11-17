@@ -83,6 +83,15 @@ class MainActivity : TauriActivity() {
 
 class ReaderChrome(private val activity: MainActivity, private val webView: WebView) {
   @JavascriptInterface
+  fun searchCoverImages(title: String) {
+    activity.runOnUiThread {
+      if (Uri.parse(webView.url ?: "").host != "tauri.localhost") return@runOnUiThread
+      val url=Uri.parse("https://www.google.com/search").buildUpon().appendQueryParameter("tbm","isch").appendQueryParameter("q",title.take(500)+" manga cover").build()
+      try { activity.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,url)) }
+      catch (_: android.content.ActivityNotFoundException) { android.widget.Toast.makeText(activity,"No browser is installed",android.widget.Toast.LENGTH_LONG).show() }
+    }
+  }
+  @JavascriptInterface
   fun requestDownloadNotifications() {
     activity.runOnUiThread {
       if (Uri.parse(webView.url ?: "").host == "tauri.localhost" && android.os.Build.VERSION.SDK_INT >= 33 &&

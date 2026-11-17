@@ -79,7 +79,7 @@ function mangaExtensionInfo(book){
 function mangaSourceView(book){
  const info=mangaExtensionInfo(book),missing=!info.installed,hidden=(state.settings.dismissedCoverWarnings||[]).includes(book.id);
  const message=missing?(sourceRepair.running?'Checking and installing the associated extension…':sourceRepair.errors.get(book.source)||'This manga needs its source extension to load chapters and cover art. Add its repository in Settings → Sources; Mreader will check and install the match.'):(coverFailed.has(book.id)&&!hidden?'Cover art could not load. The extension is installed; the source may be offline, blocked, outdated, or have no cover.':'');
- return `<section class="manga-source-info"><h3>Source / extension</h3><p>${esc(info.name)}${info.sourceName&&info.sourceName!==info.name?' · '+esc(info.sourceName):''}${info.language?' · '+esc(info.language):''}</p><small>${esc(info.kind)} · ${missing?'Extension needed':'Available'}${info.flagged?' · Flagged as not working':''}</small>${message?`<p class="notice" role="status">${esc(message)}${!missing?button('retry-source-cover','Retry source cover','secondary',`data-id="${esc(book.id)}"`)+button('cover-warning-hide','Hide warning','secondary',`data-id="${esc(book.id)}"`):''}</p>`:''}${!missing&&hidden&&coverFailed.has(book.id)?button('cover-warning-show','Show cover warning','secondary',`data-id="${esc(book.id)}"`):''}${missing?`<div class="button-row">${book.source.startsWith('apk:')?button('repair-book-source',sourceRepair.running?'Checking extension…':'Check / install extension','secondary',`data-id="${esc(book.id)}" ${sourceRepair.running?'disabled':''}`):''}${button('source-settings','Open Sources settings','secondary')}</div>`:''}</section>`;
+ return `<section class="manga-source-info"><h3>Source / extension</h3><p>${esc(info.name)}${info.sourceName&&info.sourceName!==info.name?' · '+esc(info.sourceName):''}${info.language?' · '+esc(info.language):''}</p><small>${esc(info.kind)} · ${missing?'Extension needed':'Available'}${info.flagged?' · Flagged as not working':''}</small>${message?`<p class="notice" role="status">${esc(message)}${!missing?button('retry-source-cover','Retry source cover','secondary',`data-id="${esc(book.id)}"`)+button('search-cover-images','Search cover images','secondary',`data-id="${esc(book.id)}"`)+button('cover-warning-hide','Hide warning','secondary',`data-id="${esc(book.id)}"`):''}</p>`:''}${!missing&&hidden&&coverFailed.has(book.id)?button('cover-warning-show','Show cover warning','secondary',`data-id="${esc(book.id)}"`):''}${missing?`<div class="button-row">${book.source.startsWith('apk:')?button('repair-book-source',sourceRepair.running?'Checking extension…':'Check / install extension','secondary',`data-id="${esc(book.id)}" ${sourceRepair.running?'disabled':''}`):''}${button('source-settings','Open Sources settings','secondary')}</div>`:''}</section>`;
 }
 async function repairMissingBookExtensions(retry=false,onlyId=null){
  if(sourceRepair.running)return;
@@ -478,6 +478,7 @@ document.addEventListener('click',async event=>{
  if(t.dataset.action==='files-layout'){try{applySnapshot(await api('save_settings',{settings:{...state.settings,filesLayout:t.dataset.layout,komgaPassword:''}}));render();}catch(error){toast(error);}}
  if(['cover-warning-hide','cover-warning-show'].includes(t.dataset.action)){const ids=new Set(state.settings.dismissedCoverWarnings||[]);if(t.dataset.action==='cover-warning-hide')ids.add(t.dataset.id);else ids.delete(t.dataset.id);try{applySnapshot(await api('save_settings',{settings:{...state.settings,dismissedCoverWarnings:[...ids],komgaPassword:''}}));if(state.detail)renderDetails();}catch(error){toast(error);}}
  if(t.dataset.action==='choose-custom-cover'&&t.closest('#detail .detail-cover'))chooseCustomCover(t.dataset.id);
+ if(t.dataset.action==='search-cover-images')showCoverImageSearch(t.dataset.id);
  if(t.dataset.action==='retry-source-cover'){
   const id=t.dataset.id;coverGeneration.set(id,(coverGeneration.get(id)||0)+1);const old=coverCache.get(id);if(old)URL.revokeObjectURL(old);coverCache.delete(id);coverFailed.delete(id);loadCovers();toast('Retrying cover from its installed source…');
  }
@@ -857,4 +858,16 @@ async function runVerification(plan) {
     };
   }
   await api("verification_finish", { report });
+}
+
+function showCoverImageSearch(id){
+ const book=state.books.find(b=>b.id===id);if(!book){toast('Add this manga to your library before choosing its cover.');return;}
+ document.querySelector('#cover-image-search')?.remove();
+ const layer=document.createElement('div');layer.id='cover-image-search';layer.className='modal-backdrop';layer.style.zIndex='60';
+ layer.innerHTML=`<section class="modal" role="dialog" aria-modal="true" aria-label="Find cover art"><h2>Find cover art</h2><p>Search Google Images for ${esc(book.title)}, save your chosen image, then return here and choose the saved image.</p><p>Your cover stays saved, is included in backups, and syncs with your signed-in account.</p><div class="button-row">${button('cover-google-open','Open Google Images','primary')}${button('cover-image-select','Choose saved image','secondary')}${button('cover-search-close','Cancel','secondary')}</div></section>`;
+ layer.addEventListener('click',async event=>{const action=event.target.closest('[data-action]')?.dataset.action;
+  if(action==='cover-search-close')layer.remove();
+  if(action==='cover-image-select'){layer.remove();chooseCustomCover(id);}
+  if(action==='cover-google-open'){try{if(window.MreaderChrome?.searchCoverImages)window.MreaderChrome.searchCoverImages(book.title);else await api('cover_image_search',{bookId:id});}catch(error){toast(error);}}
+ });document.body.append(layer);
 }
