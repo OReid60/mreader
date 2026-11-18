@@ -1,10 +1,10 @@
 # Download Mreader
 
-[Open the 0.3.46 release page](https://github.com/OReid60/mreader/releases/tag/v0.3.46)
+[Open the 0.3.46 release page](https://github.com/OReid60/mreader-downloads/releases/tag/v0.3.46)
 
 [Read patch notes](PATCH-NOTES.md)
 
-This repository is private. Sign into a GitHub account with repository access to download release assets.
+The source repository is public. Installers are hosted separately in the private `OReid60/mreader-downloads` repository. Sign into an invited GitHub account to download release assets.
 
 | Device | File | Installation |
 | --- | --- | --- |
