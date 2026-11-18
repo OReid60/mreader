@@ -52,3 +52,10 @@ All 232 original reading-progress records matched the pre-test snapshot after
 the isolated tests. Local test traces and copied user data remain ignored and
 are not release assets. Android dialog behavior was compile-checked and covered
 by shared UI tests; physical Android testing is pending.
+
+
+Android verification follows up to five HTTPS server redirects on the same port; unrelated navigation, credentials in URLs, local files and TLS errors remain blocked. Third-party cookies are enabled only in the isolated verification WebView, as recommended by Cloudflare's mobile integration guide. The browser still has no reader JavaScript bridge.
+
+When a source request receives a Cloudflare challenge, the Android host remembers that exact HTTPS resource and its request user agent for that source for up to 15 minutes. The cache is bounded and memory-only. Opening verification uses this resource so an unprotected homepage cannot hide a challenge on the actual listing or chapter resource. Cookies continue to use Android's shared per-domain CookieManager; cookie values are never returned to the UI or copied into metadata backups or account sync.
+
+Reference: https://developers.cloudflare.com/turnstile/get-started/mobile-implementation/

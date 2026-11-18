@@ -8,7 +8,7 @@
 
 A reader for Windows, Android phones and tablets, and Linux.
 
-[**Download Mreader 0.3.39**](https://github.com/OReid60/mreader/releases/tag/v0.3.39) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
+[**Download Mreader 0.3.40**](https://github.com/OReid60/mreader/releases/tag/v0.3.40) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
 
 </div>
 
@@ -30,11 +30,11 @@ A reader for Windows, Android phones and tablets, and Linux.
 
 Install Android updates over the existing app to keep its data. Source extensions, repository links, and manga content are not included. Users obtain and verify repositories independently. Source availability depends on the provider and extension author.
 
-## What’s new in 0.3.39
+## What’s new in 0.3.40
 
-Tap outside an enlarged cover to return to the manga preview. Source cards now show the clickable extension name and Installed status without the extra Source / extension and APK extension labels.
+Settings shows the installed app version. Android source verification remembers the actual challenged HTTPS page and its user agent, supports verification cookies, and follows a bounded chain of secure server redirects. These fixes allow source domain migrations to be verified without opening an unrelated homepage.
 
-See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.39) for downloads and validation notes.
+See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.40) for downloads and validation notes.
 
 ## Build and contribute
 

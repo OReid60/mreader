@@ -30,7 +30,9 @@ class PreviewLayoutTest {
    val portrait=layout("portrait");shot("preview-portrait.png")
    val gallery="previewGallery"+System.nanoTime()
    js("""window.$gallery=null;(async()=>{try{document.querySelector('#detail [data-action=enlarge-cover]').click();const deadline=Date.now()+8000;while(!document.querySelector('#cover-enlargement img')?.naturalWidth){if(Date.now()>deadline)throw Error('Enlarged image did not decode');await new Promise(r=>setTimeout(r,50));}window.$gallery=JSON.stringify({ok:true,noFilePicker:!document.querySelector('#custom-cover-file')});}catch(e){window.$gallery=JSON.stringify({ok:false,error:String(e)})}})()""");assertTrue(await(gallery).getBoolean("noFilePicker"));shot("preview-enlarged.png")
-   assertEquals("true",js("handleAppBack();!document.querySelector('#cover-enlargement')&&state.detail?.id===window.previewTestBook"))
+   assertEquals("true",js("document.querySelector('#cover-enlargement img').click();!!document.querySelector('#cover-enlargement')"))
+   assertEquals("true",js("document.querySelector('#cover-enlargement>section').click();!document.querySelector('#cover-enlargement')&&state.detail?.id===window.previewTestBook"))
+   assertEquals("true",js("!document.querySelector('#detail .manga-source-info h3')&&document.querySelector('#detail [data-action=source-verify]').textContent.trim().length>0&&document.querySelector('#detail .manga-source-info small').textContent.includes('Installed')"))
    ins.uiAutomation.setRotation(1);Thread.sleep(1000)
    val landscape=layout("landscape");shot("preview-landscape.png")
    ins.uiAutomation.setRotation(rotation);Thread.sleep(700)
@@ -48,7 +50,7 @@ class PreviewLayoutTest {
    js("document.querySelector('#detail [data-action=source-verify-cancel]')?.click()")
    val done="previewDone"+System.nanoTime();js("""window.$done=null;(async()=>{try{const after=JSON.stringify((await api('snapshot')).progress.map(p=>[p.bookId,p.chapterId,p.page,p.completed,p.updated]).sort());window.$done=JSON.stringify({ok:true,progressUnchanged:after===window.previewProgressBefore,browserSessionClosed:!featureState.sourceVerification});}catch(e){window.$done=JSON.stringify({ok:false,error:String(e)})}})()""")
    val result=await(done);assertTrue("Reading progress changed",result.getBoolean("progressUnchanged"));assertTrue(result.getBoolean("browserSessionClosed"))
-   ins.sendStatus(0,Bundle().apply{putString("previewLayoutProof",JSONObject().put("portrait",portrait).put("landscape",landscape).put("coverEnlarged",true).put("nativeBrowserOpened",true).put("browserHeaderSafe",true).put("progressUnchanged",true).toString())})
+   ins.sendStatus(0,Bundle().apply{putString("previewLayoutProof",JSONObject().put("portrait",portrait).put("landscape",landscape).put("coverEnlarged",true).put("outsideTapClosed",true).put("extensionNameLink",true).put("nativeBrowserOpened",true).put("browserHeaderSafe",true).put("progressUnchanged",true).toString())})
   }finally{ins.uiAutomation.setRotation(if(automatic)-2 else rotation);ins.runOnMainSync{activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);if(browserClose?.isShown==true)browserClose?.performClick()}}
  }}
 }

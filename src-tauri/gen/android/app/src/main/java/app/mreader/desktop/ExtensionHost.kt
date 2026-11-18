@@ -22,6 +22,8 @@ import java.security.MessageDigest
 /** Invoked on Rust's blocking worker pool, never the Android UI thread. */
 @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 object ExtensionHost {
+    private data class VerificationTarget(val url:String,val agent:String?,val observed:Long)
+    private val verificationTargets=java.util.concurrent.ConcurrentHashMap<String,VerificationTarget>()
     private val sources = java.util.concurrent.ConcurrentHashMap<String, Source>()
     private val packages = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
     // Reuse the extension's successful Browse thumbnails for saved Library titles.
@@ -87,11 +89,15 @@ object ExtensionHost {
         val result: Any = runBlocking {
             when(args.getString("operation")) {
                 "install", "load" -> load(context,args)
-                "remove" -> {packages.remove(args.getString("package"))?.forEach { sources.remove(it) };JSONObject()}
+                "remove" -> {packages.remove(args.getString("package"))?.forEach { sources.remove(it);verificationTargets.remove(it) };JSONObject()}
                 else -> {
                     val source=sources[args.getString("sourceId")] ?: error("Install this extension on this device before reading")
                     when(args.getString("operation")) {
-                        "source_info" -> {val http=source as? HttpSource ?: error("This source does not provide a website");JSONObject().put("url",http.baseUrl).put("userAgent",http.headers["User-Agent"] ?: NetworkHelper(context).defaultUserAgentProvider())}
+                        "source_info" -> {
+                            val http=source as? HttpSource ?: error("This source does not provide a website")
+                            val target=verificationTargets[args.getString("sourceId")]?.takeIf{android.os.SystemClock.elapsedRealtime()-it.observed<900000}
+                            JSONObject().put("url",target?.url?:http.baseUrl).put("userAgent",target?.agent?:http.headers["User-Agent"]?:NetworkHelper(context).defaultUserAgentProvider())
+                        }
                         "verification_open" -> {SourceVerificationBrowser.open(args.getString("url"),args.getString("userAgent"));JSONObject()}
                         "verification_finish" -> {SourceVerificationBrowser.finish();JSONObject().put("cookies",0)}
                         "search" -> {
@@ -163,7 +169,20 @@ object ExtensionHost {
         }
         JSONObject().put("data",result).toString()
     } catch(e: Throwable) {
-        val root=generateSequence(e){it.cause}.take(8).last()
-        JSONObject().put("error", "${e.javaClass.simpleName}: ${root.javaClass.simpleName}: ${root.message ?: e.message ?: "Extension failed"}".take(2000)).toString()
+        val chain=generateSequence(e){it.cause}.take(8).toList()
+        val challenge=chain.filterIsInstance<eu.kanade.tachiyomi.network.interceptor.BrowserVerificationRequiredException>().firstOrNull()
+        if(challenge!=null){
+            val sourceId=runCatching{JSONObject(text).optString("sourceId")}.getOrDefault("")
+            if(sourceId.isNotEmpty()&&sources.containsKey(sourceId)&&challenge.targetUrl.startsWith("https://")){
+                val now=android.os.SystemClock.elapsedRealtime()
+                verificationTargets.entries.removeIf{now-it.value.observed>=900000}
+                if(verificationTargets.size>=128)verificationTargets.keys.firstOrNull()?.let{verificationTargets.remove(it)}
+                verificationTargets[sourceId]=VerificationTarget(challenge.targetUrl,challenge.browserUserAgent,now)
+            }
+            JSONObject().put("error",challenge.message).toString()
+        }else{
+            val root=chain.last()
+            JSONObject().put("error", "${e.javaClass.simpleName}: ${root.javaClass.simpleName}: ${root.message ?: e.message ?: "Extension failed"}".take(2000)).toString()
+        }
     }
 }

@@ -1,6 +1,7 @@
 // Native extension management and managed account sync. No credentials enter page storage.
 const featureState = {
   settingsTab: "general",
+  appVersion: null,
   browseSourceChosen: false,
   sourceVerification: null,
   mobileDownload: null,
@@ -531,12 +532,14 @@ function releaseCoverCache() {
   coverFailed.clear();
 }
 async function loadFeatures() {
-  const [extensions, cloud, plan, apk] = await Promise.all([
+  const [extensions, cloud, plan, apk, appVersion] = await Promise.all([
     api("extension_list"),
     api("cloud_status"),
     api("verification_plan"),
     api("apk_state"),
+    window.__TAURI__?.app?.getVersion ? window.__TAURI__.app.getVersion().catch(()=>null) : Promise.resolve(null),
   ]);
+  featureState.appVersion = appVersion;
   featureState.extensions = extensions;
   featureState.apk = apk;
   featureState.cloud = cloud;
