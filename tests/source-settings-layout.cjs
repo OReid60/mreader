@@ -5,12 +5,12 @@ try{for(const width of [320,393,768,1440]){
  page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
   const settings={theme:'dark',language:'en',apkLayout:'list',filesLayout:'stacked',...JSON.parse(sessionStorage.getItem('settings-fixture')||'{}')};
-  const extensions=[1,2].map(id=>({name:'Source '+id,package:'fixture.'+id,version:'1',versionCode:1,sources:[{id:String(id),name:'Source '+id,language:'en'}]}));
+  const extensions=Array.from({length:20},(_,i)=>i+1).map(id=>({name:'Source '+id,package:'fixture.'+id,version:'1',versionCode:1,sources:[{id:String(id),name:'Source '+id,language:'en'}]}));
   const apk={repositories:[{url:'https://fixture.invalid/index.pb',catalog:{name:'User list',extensions}}],installed:extensions.map(extension=>({extension}))};
   window.__TAURI__={app:{getVersion:async()=>'test'},core:{invoke:async(name,args)=>{
    const snapshot=()=>({books:[],progress:[{bookId:'saved',chapterId:'one',page:7,updated:123}],categories:['Default'],settings:{...settings},dataDir:'source-layout-fixture'});
    if(name==='snapshot')return snapshot();if(name==='save_settings'){Object.assign(settings,args.settings);sessionStorage.setItem('settings-fixture',JSON.stringify(settings));return snapshot();}
-   if(name==='download_queue'||name==='extension_list')return[];if(name==='apk_state')return apk;if(name==='cloud_status')return{configured:false,signedIn:false};if(name==='verification_plan')return{enabled:false};throw Error('Unexpected '+name);
+   if(name==='source_prefer')return {};if(name==='download_queue'||name==='extension_list')return[];if(name==='apk_state')return apk;if(name==='cloud_status')return{configured:false,signedIn:false};if(name==='verification_plan')return{enabled:false};throw Error('Unexpected '+name);
   }},event:{listen:async()=>{}},webviewWindow:{getCurrentWebviewWindow:()=>({onDragDropEvent:async()=>{}})}};
  });
  await page.goto(pathToFileURL(path.resolve('index.html')).href);await page.waitForFunction(()=>state.dataDir==='source-layout-fixture');
@@ -31,7 +31,8 @@ try{for(const width of [320,393,768,1440]){
  assert.equal(await page.locator('.apk-layout-stacked').count(),1);
  assert.equal(await page.locator('.source-manager-skips').evaluate(n=>n.open),false);
  await page.locator('#source-manager-select').click();assert(await page.getByRole('dialog',{name:'Browse source',exact:true}).isVisible());assert.equal(await page.locator('select#source-manager-select').count(),0);
- await page.getByRole('radio',{name:'All installed sources',exact:true}).click();assert.equal(await page.locator('#source-picker').count(),0);assert.equal(await page.evaluate(()=>state.source),'all');
+ const bounds=await page.locator('#source-picker').evaluate(layer=>{const dialog=layer.querySelector('.source-picker-modal'),r=dialog.getBoundingClientRect(),heading=dialog.querySelector('.source-picker-heading').getBoundingClientRect();return{top:r.top,bottom:r.bottom,height:innerHeight,front:layer.contains(document.elementFromPoint(heading.x+5,heading.y+5)),scroll:dialog.querySelector('.source-picker-options').scrollHeight>dialog.querySelector('.source-picker-options').clientHeight}});assert(bounds.top>=0&&bounds.bottom<=bounds.height&&bounds.front&&bounds.scroll,JSON.stringify(bounds));
+ await page.locator('[data-source-choice="apk:1"]').click();await page.waitForFunction(()=>state.source==='apk:1');await page.locator('#source-manager-select').click();await page.getByRole('radio',{name:'All installed sources',exact:true}).click();assert.equal(await page.locator('#source-picker').count(),0);assert.equal(await page.evaluate(()=>state.source),'all');
  await page.locator('#source-manager-select').click();assert.equal(await page.evaluate(()=>handleAppBack()),true);assert.equal(await page.locator('#source-picker').count(),0);
  assert.equal(await page.evaluate(()=>state.progress[0].page),7);assert.deepEqual(errors,[]);await page.close();
 }console.log('PASS source issue badges, stable disclosures during search/layout changes, Stacked-only styling, themed picker and disclosure state after restart, mobile Files toggle removal and progress preservation');}

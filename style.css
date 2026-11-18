@@ -1654,3 +1654,6 @@ body.mobile-layout, body.mobile-layout.light {
 [aria-checked=true]>.source-picker-radio:after{content:'';width:10px;height:10px;border-radius:50%;background:var(--accent)}
 .source-picker-heading button{min-height:44px}
 .mobile-layout .source-picker-modal{margin:0;width:100%;max-width:520px;box-sizing:border-box}
+#source-picker.modal-backdrop{z-index:100;box-sizing:border-box;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));height:100dvh;overflow:hidden}
+#source-picker .source-picker-modal{box-sizing:border-box;width:min(100%,520px);max-width:100%;max-height:100%;min-height:0;margin:0;overflow:hidden;display:flex;flex-direction:column}
+#source-picker .source-picker-options{flex:1 1 auto;min-height:0;grid-auto-rows:max-content;overflow-y:auto;touch-action:pan-y}

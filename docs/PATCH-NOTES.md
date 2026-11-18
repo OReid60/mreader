@@ -2,6 +2,13 @@
 
 New releases are recorded here, newest first. Download the current build from the repository's latest GitHub release. Older release binaries may be removed; these notes and Git tags retain the version history.
 
+## 0.3.46 — 2026-11-18
+
+- Source picker stays above the mobile header and navigation, with safe screen margins.
+- Long source lists scroll inside the dialog without clipping its heading or bottom edge.
+
+Validation: long-list layout checks passed at 320, 393, 768 and 1440 pixels. Single source → All passed on the connected phone and desktop in preview with unchanged reading progress. The signed Android update was installed over the existing app; its packaged picker and source-switching check passed on retry with unchanged progress. Windows compilation passed, the EXE embeds the exact signed APK, and launch was verified maximized on display 2 without changing foreground focus.
+
 ## 0.3.45 — 2026-11-18
 
 - APK source extensions always use Stacked cards; the redundant List/Stacked switches are removed, including for older saved preferences.
