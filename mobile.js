@@ -367,7 +367,7 @@ function matchesLibraryCategory(book,name){return name==='Favorites'?book.favori
 function libraryCategoryNames(){return [...new Set([...(state.categories||['Default','nsfw']),'Favorites'])];}
 function categoryTabs(mobile = false) {
   const names = libraryCategoryNames();
-  return `<nav class="${mobile ? 'mobile-categories' : 'category-tabs'}" aria-label="Library categories">${names.map(name => `<button data-action="mobile-category" data-category="${esc(name)}" class="${(state.mobileCategory || 'Default') === name ? 'active' : ''}">${esc(name)}</button>`).join('')}</nav>`;
+  return `<nav class="${mobile ? 'mobile-categories' : 'category-tabs'}" aria-label="Library categories">${button('mobile-manage-categories','+','category-add','aria-label="Manage categories" title="Manage categories"')}${names.map(name => `<button data-action="mobile-category" data-category="${esc(name)}" class="${(state.mobileCategory || 'Default') === name ? 'active' : ''}">${esc(name)}</button>`).join('')}</nav>`;
 }
 function categoryLayer(title, content) {
   closeMobileSheet();
@@ -381,7 +381,7 @@ function showCategories(bookId, editName) {
   const names=state.categories || ['Default','nsfw'];
   if(bookId) {
     const book=bookById(bookId);
-    categoryLayer('Choose category', `<p>${esc(book.title)}</p><div class="category-choices">${names.map(name=>button('mobile-category-choose',`${bookCategory(book)===name?'✓ ':''}${esc(name)}`,'secondary',`data-id="${esc(bookId)}" data-category="${esc(name)}"`)).join('')}</div><p>Create groups from Library → Categories.</p>`);
+    categoryLayer('Choose category', `<p>${esc(book.title)}</p><div class="category-choices">${names.map(name=>button('mobile-category-choose',`${bookCategory(book)===name?'✓ ':''}${esc(name)}`,'secondary',`data-id="${esc(bookId)}" data-category="${esc(name)}"`)).join('')}</div><p>Create groups using + beside the Library categories.</p>`);
     return;
   }
   categoryLayer(editName ? 'Rename category' : 'Categories', `${!editName ? `<div class="category-rows">${names.map(name=>`<div><b>${esc(name)}</b>${name==='Default'?'<small>Uncategorized manga</small>':`${button('mobile-edit-category','Rename','secondary',`data-name="${esc(name)}"`)}${button('mobile-category-delete','Delete','secondary',`data-name="${esc(name)}"`)}`}</div>`).join('')}</div>`:''}<form id="category-form"><label>${editName?'Category name':'New category'}<input id="category-name" maxlength="60" required value="${esc(editName || '')}" placeholder="e.g. Action, Romance, To read"></label><button class="primary" type="submit">${editName?'Save name':'Create category'}</button></form>`);

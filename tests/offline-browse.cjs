@@ -43,7 +43,7 @@ const path=require('node:path');
   await page.evaluate(()=>{state.page='Settings';render();});
   assert.equal(await page.locator('[name="komgaUrl"]').count(),0);
   await page.evaluate(()=>{state.page='Library';render();});
-  assert.equal(await page.locator('[data-action="mobile-manage-categories"]').count(),0);
+  assert.equal(await page.locator('[data-action="mobile-manage-categories"]').count(),1);
   assert.equal(await page.locator('.new-chapters').count(),1);
   if(width===1440){
     const aligned=await page.evaluate(()=>{const h=document.querySelector('.library-heading'),c=h.querySelector('.category-tabs');return Math.abs(h.getBoundingClientRect().top-c.getBoundingClientRect().top)<35;});

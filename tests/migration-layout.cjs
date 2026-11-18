@@ -13,7 +13,7 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),{pat
  });
  await page.goto(pathToFileURL(path.resolve('index.html')).href);await page.waitForFunction(()=>state.dataDir==='fixture');
  await page.evaluate(()=>{state.page='Settings';featureState.settingsTab='general';render();});
- assert.equal(await page.getByRole('button',{name:'Categories',exact:true}).count(),1);
+ assert.equal(await page.getByRole('button',{name:'Categories',exact:true}).count(),0);
  if(width>760){
   const controls=await page.locator('#settings-form .settings-row > select').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect();return {right:b.right,width:b.width}}));
   assert(controls.every(c=>Math.abs(c.right-controls[0].right)<1&&c.width<=281));
@@ -53,4 +53,4 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),{pat
  await page.screenshot({path:`test-artifacts/settings-migration-${width}.png`,fullPage:true});
  for(const tab of ['Updates','History','Browse','Downloads']){await page.evaluate(tab=>navigate(tab),tab);if(width>760)assert.equal(await page.locator('.compact-heading').count(),1);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
  assert.deepEqual(errors,[]);await page.close();
-}console.log('PASS migration preview/confirmation/cancel, escaped metadata, General categories, collapsed repository and manual fingerprint toggle; compact desktop/mobile tabs');}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
+}console.log('PASS migration preview/confirmation/cancel, escaped metadata, Library category shortcut, collapsed repository and manual fingerprint toggle; compact desktop/mobile tabs');}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

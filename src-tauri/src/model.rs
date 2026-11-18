@@ -68,6 +68,8 @@ pub fn preserve_device_chapters(incoming:&mut Vec<Chapter>,existing:&[Chapter]){
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
+    #[serde(default = "default_show_cover_search")]
+    pub show_cover_search: bool,
     #[serde(default = "default_apk_layout")]
     pub files_layout: String,
     #[serde(default)]
@@ -95,6 +97,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            show_cover_search: true,
             files_layout: default_apk_layout(),
             dismissed_cover_warnings: Vec::new(),
             flagged_extensions: Vec::new(),
@@ -113,6 +116,7 @@ impl Default for Settings {
         }
     }
 }
+fn default_show_cover_search() -> bool { true }
 fn default_apk_layout() -> String { "list".into() }
 fn default_start_page() -> String { "Library".into() }
 fn default_reader_layout() -> String {
@@ -125,23 +129,27 @@ mod reader_layout_tests {
     #[test]
     fn old_settings_default_to_paged_and_new_layout_roundtrips() {
         let mut legacy = serde_json::to_value(Settings::default()).unwrap();
+        legacy.as_object_mut().unwrap().remove("showCoverSearch");
         legacy.as_object_mut().unwrap().remove("apkLayout");
         legacy.as_object_mut().unwrap().remove("readerLayout");
         legacy.as_object_mut().unwrap().remove("startPage");
         legacy.as_object_mut().unwrap().remove("sidebarCollapsed");
         let old: Settings = serde_json::from_value(legacy).unwrap();
+        assert!(old.show_cover_search);
         assert_eq!(old.apk_layout, "list");
         assert_eq!(old.start_page, "Library");
         assert!(!old.sidebar_collapsed);
         assert!(old.flagged_extensions.is_empty());
         assert_eq!(old.reader_layout, "paged");
         let mut settings = old;
+        settings.show_cover_search=false;
         settings.flagged_extensions=vec!["apk:fixture.extension".into()];
         settings.reader_layout = "continuous".into();
         settings.apk_layout = "stacked".into();
         settings.start_page = "Downloads".into();
         settings.sidebar_collapsed = true;
         let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert!(!restored.show_cover_search);
         assert_eq!(restored.reader_layout, "continuous");
         assert_eq!(restored.apk_layout, "stacked");
         assert_eq!(restored.start_page, "Downloads");
