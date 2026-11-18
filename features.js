@@ -83,8 +83,10 @@ function mangaCoverWarningView(book){
  return `<div class="cover-art-warning">${message?`<p class="notice" role="status">${esc(message)}${!missing?button('cover-warning-hide','Hide warning','secondary',`data-id="${esc(book.id)}"`):''}</p>`:''}${!missing&&hidden&&coverFailed.has(book.id)?button('cover-warning-show','Show cover warning','secondary',`data-id="${esc(book.id)}"`):''}${hint}</div>`;
 }
 function mangaSourceView(book){
- const info=mangaExtensionInfo(book),missing=!info.installed,mobile=typeof useMobileLayout==='function'&&useMobileLayout();
- return `<section class="manga-source-info"><h3>${book.source.startsWith('apk:')&&!missing?button('source-verify','Source / extension','source-website-link',`data-source-id="${esc(book.source)}" aria-label="Open source website for ${esc(book.title)}" title="Open source website and verify in the app"`):'Source / extension'}</h3><p>${esc(info.name)}${info.sourceName&&info.sourceName!==info.name?' · '+esc(info.sourceName):''}${info.language?' · '+esc(info.language):''}</p><small>${esc(info.kind)} · ${missing?'Extension needed':'Available'}${info.flagged?' · Flagged as not working':''}</small>${mangaCoverWarningView(book)}${sourceVerificationPreview(book.source)}${missing?`<div class="button-row">${book.source.startsWith('apk:')?button('repair-book-source',sourceRepair.running?'Checking extension…':'Check / install extension','secondary',`data-id="${esc(book.id)}" ${sourceRepair.running?'disabled':''}`):''}${button('source-settings','Open Sources settings','secondary')}</div>`:''}</section>`;
+ const info=mangaExtensionInfo(book),missing=!info.installed;
+ const name=esc(info.name)+(info.sourceName&&info.sourceName!==info.name?' · '+esc(info.sourceName):'');
+ const website=book.source.startsWith('apk:')&&!missing?button('source-verify',name,'source-website-link',`data-source-id="${esc(book.source)}" aria-label="Open source website for ${esc(book.title)}" title="Open source website and verify in the app"`):name;
+ return `<section class="manga-source-info"><p>${website}${info.language?' · '+esc(info.language):''}</p><small>${missing?'Extension needed':'Installed'}${info.flagged?' · Flagged as not working':''}</small>${mangaCoverWarningView(book)}${sourceVerificationPreview(book.source)}${missing?`<div class="button-row">${book.source.startsWith('apk:')?button('repair-book-source',sourceRepair.running?'Checking extension…':'Check / install extension','secondary',`data-id="${esc(book.id)}" ${sourceRepair.running?'disabled':''}`):''}${button('source-settings','Open Sources settings','secondary')}</div>`:''}</section>`;
 }
 async function repairMissingBookExtensions(retry=false,onlyId=null){
  if(sourceRepair.running)return;
@@ -886,5 +888,5 @@ function enlargeCover(id){
  document.querySelector('#cover-enlargement')?.remove();
  const layer=document.createElement('div');layer.id='cover-enlargement';layer.className='modal-backdrop cover-enlargement';
  layer.innerHTML=`<section role="dialog" aria-modal="true" aria-label="Enlarged cover for ${esc(book.title)}">${button('close-cover-enlargement',icon('close'),'icon-button', 'aria-label="Close enlarged cover"')}<img src="${esc(url)}" alt="${esc(book.title)} cover"></section>`;
- layer.addEventListener('click',e=>{if(e.target===layer||e.target.closest('[data-action=close-cover-enlargement]')){layer.remove();document.querySelector('#detail [data-action=enlarge-cover]')?.focus();}});document.body.append(layer);layer.querySelector('button').focus();
+ layer.addEventListener('click',e=>{if(!e.target.closest('img')||e.target.closest('[data-action=close-cover-enlargement]')){layer.remove();document.querySelector('#detail [data-action=enlarge-cover]')?.focus();}});document.body.append(layer);layer.querySelector('button').focus();
 }

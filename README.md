@@ -8,7 +8,7 @@
 
 A reader for Windows, Android phones and tablets, and Linux.
 
-[**Download Mreader 0.3.38**](https://github.com/OReid60/mreader/releases/tag/v0.3.38) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
+[**Download Mreader 0.3.39**](https://github.com/OReid60/mreader/releases/tag/v0.3.39) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
 
 </div>
 
@@ -30,11 +30,11 @@ A reader for Windows, Android phones and tablets, and Linux.
 
 Install Android updates over the existing app to keep its data. Source extensions, repository links, and manga content are not included. Users obtain and verify repositories independently. Source availability depends on the provider and extension author.
 
-## What’s new in 0.3.38
+## What’s new in 0.3.39
 
-The Favorites, downloaded-chapters and remove icons stay together on narrow phone screens. This fixes the download icon wrapping below Favorites. Android source-browser controls also respect the status bar, gesture area and display cutouts. Cover enlargement and in-app source verification remain available from manga previews.
+Tap outside an enlarged cover to return to the manga preview. Source cards now show the clickable extension name and Installed status without the extra Source / extension and APK extension labels.
 
-See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.38) for downloads and validation notes.
+See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.39) for downloads and validation notes.
 
 ## Build and contribute
 
