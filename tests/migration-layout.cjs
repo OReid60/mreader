@@ -23,13 +23,13 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),{pat
    await page.screenshot({path:`test-artifacts/settings-${tab.split(' ')[0]}-${width}.png`,fullPage:true});
   }
  }
- if(width>760)await page.getByRole('tab',{name:'Sources',exact:true}).click();
+ await page.getByRole('tab',{name:'Sources',exact:true}).click();
  assert.equal(await page.locator('details').filter({has:page.locator('summary', {hasText:'Add extension repository'})}).getAttribute('open'),null);
  await page.getByText('Add extension repository',{exact:true}).click();
  assert.equal(await page.locator('[name="fingerprint"]').isVisible(),false);
  await page.locator('#manual-fingerprint').check();assert(await page.locator('[name="fingerprint"]').isVisible());assert(await page.locator('[name="fingerprint"]').isEnabled());
  await page.locator('#manual-fingerprint').uncheck();assert.equal(await page.locator('[name="fingerprint"]').isEnabled(),false);
- if(width>760)await page.getByRole('tab',{name:'Files & backup',exact:true}).click();
+ await page.getByRole('tab',{name:'Files & backup',exact:true}).click();
  await page.locator('#migration-file').setInputFiles({name:'fixture.tachibk',mimeType:'application/octet-stream',buffer:Buffer.from([1,2,3])});
  await page.waitForSelector('[data-action="migration-import"]');assert.equal(await page.evaluate(()=>importCalls),0);
  assert((await page.locator('.migration-titles').innerText()).includes('<script>untrusted title</script>'));assert.equal(await page.locator('.migration-titles script').count(),0);

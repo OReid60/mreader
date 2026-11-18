@@ -1043,6 +1043,16 @@ fn switch_profile(core: &Core) -> Result<()> {
     Ok(())
 }
 #[tauri::command]
+async fn cloud_password_recovery(core: State<'_, Arc<Core>>, email: String) -> Result<()> {
+    let _guard = core.cloud.gate.lock().await;
+    core.cloud.request_password_recovery(&email).await
+}
+#[tauri::command]
+async fn cloud_password_reset(core: State<'_, Arc<Core>>, reset_link: String, password: String) -> Result<()> {
+    let _guard = core.cloud.gate.lock().await;
+    core.cloud.reset_password(&reset_link, &password).await
+}
+#[tauri::command]
 async fn cloud_auth(
     core: State<'_, Arc<Core>>,
     email: String,
@@ -1226,6 +1236,8 @@ pub fn run() {
             mobile_download_start,
             mobile_download_stop,
             cloud_auth,
+            cloud_password_recovery,
+            cloud_password_reset,
             cloud_logout,
             cloud_sync,
             verification_plan,

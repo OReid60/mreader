@@ -1539,3 +1539,103 @@ body.mobile-layout, body.mobile-layout.light {
 .detail-cover .cover-search-button{width:100%;margin:8px 0 0;white-space:normal;font-size:11px;padding:8px}.detail-cover .cover[role=button]{cursor:zoom-in}.source-website-link{border:0;background:transparent;color:inherit;padding:0;font:inherit;text-align:left;text-decoration:underline;text-underline-offset:3px;cursor:pointer}.detail-cover .source-website-link{padding:0}.preview-verification{font-size:11px;overflow-wrap:anywhere}.preview-verification button{margin-top:5px;max-width:100%;white-space:normal}.cover-enlargement{z-index:90;padding:18px}.cover-enlargement>section{width:100%;height:100%;position:relative;display:grid;place-items:center}.cover-enlargement img{max-width:100%;max-height:calc(100dvh - 72px);object-fit:contain}.cover-enlargement .icon-button{position:absolute;right:0;top:0;background:var(--panel)}
 
 .detail-icon-actions{display:inline-flex;align-items:center;gap:8px;flex:none;white-space:nowrap}.detail-icon-actions>button{flex:none}
+
+/* Compact, sectioned phone settings with aligned source recovery controls. */
+.mobile-layout .settings-workspace{display:block;margin-top:0}
+.mobile-layout .settings-navigation{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:0 0 14px}
+.mobile-layout .settings-navigation button{min-height:44px;padding:10px;font-size:12px;text-align:center;white-space:normal}
+.mobile-layout .settings-panel .feature-panel{padding:14px;margin:0 0 12px}
+.mobile-layout .settings-panel #settings-form{padding:0 14px}
+.mobile-layout .settings-panel .feature-heading{gap:10px}
+.mobile-layout .settings-panel .feature-heading>div{flex-basis:100%;min-width:0}
+.mobile-layout .settings-panel .settings-row{gap:10px}
+.mobile-layout .settings-panel h2{font-size:17px}
+.mobile-layout .settings-panel p{font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.mobile-layout .source-manager-filter{display:grid;gap:6px}
+.mobile-layout .source-manager-filter select{width:100%;min-width:0}
+.mobile-layout .browse-source-issue{border:1px solid var(--line);border-radius:10px;padding:12px;gap:6px}
+.mobile-layout .browse-source-issue>b{font-size:13px}
+.mobile-layout .browse-source-issue small{font-size:12px}
+.mobile-layout .browse-source-issue .button-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:4px}
+.mobile-layout .browse-source-issue button{min-height:44px;padding:8px;font-size:12px;white-space:normal}
+.source-skip-help{font-size:12px;color:var(--muted);margin-bottom:12px}
+.source-skip-help summary{cursor:pointer}
+
+.mobile-layout .browse-source-issue .button-row>button:first-child:nth-last-child(3){grid-column:1/-1}
+
+/* Related preferences share cards; submodules retain their existing controls. */
+.settings-panel #settings-form{padding:0;border:0;background:transparent}
+.settings-group{padding:18px 24px;margin-bottom:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.settings-group>h2{margin:0 0 4px;font-size:17px}
+.settings-group .settings-row+.settings-row{border-top:1px solid var(--line)}
+.settings-group .settings-row h3{font-size:14px}
+.settings-group .app-version{justify-self:end}
+.settings-subsection{margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+.settings-subsection h3{margin:0 0 8px}
+.backup-migration-panel{grid-column:1/-1;min-width:0}
+.backup-migration-panel .backup-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center}
+.backup-migration-panel .backup-controls .button-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.backup-migration-panel .migration-panel{margin-bottom:0}
+.files-layout>.settings-row{grid-column:1/-1}
+.files-layout-stacked>.settings-row:last-of-type{flex-direction:column;align-items:stretch}
+.mobile-layout .settings-panel #settings-form{padding:0}
+.mobile-layout .settings-group{padding:14px;margin-bottom:12px}
+.mobile-layout .settings-group .settings-row{padding:14px 0}
+@media(max-width:760px){.settings-group{padding:14px}.settings-group .app-version{justify-self:start}.backup-migration-panel .backup-controls{grid-template-columns:1fr}.backup-migration-panel .backup-controls .button-row{justify-content:flex-start}}
+
+.settings-group .settings-row h2{margin:0 0 6px;font-size:17px}
+.mobile-layout .settings-group .settings-row,.mobile-layout .backup-migration-panel .backup-controls{margin:0;background:transparent;border:0;border-radius:0}
+.mobile-layout .settings-group .settings-row+.settings-row{border-top:1px solid var(--line)}
+.settings-panel #settings-form .settings-toggle{grid-template-columns:minmax(0,1fr) auto}
+.settings-toggle>input[type=checkbox]{justify-self:end;min-width:22px;min-height:22px}
+.mobile-layout .settings-save>button{width:100%;min-height:44px}
+
+.password-recovery-modal{width:min(100%,520px);max-height:calc(100dvh - 40px);overflow:auto;box-sizing:border-box}
+.password-recovery-modal form,.password-recovery-modal label{display:grid;gap:8px}
+.password-recovery-modal form{margin:16px 0;gap:12px}
+.password-recovery-modal form[hidden]{display:none}
+.password-recovery-modal input{min-width:0;width:100%;box-sizing:border-box;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:12px;font:inherit}
+.password-recovery-modal .recovery-status{overflow-wrap:anywhere;line-height:1.5}
+.account-recovery-button{margin:12px 0 0}
+.mobile-layout .settings-panel{padding:0 12px}
+.mobile-layout .settings-navigation{padding:0 12px}
+.mobile-layout .settings-panel .feature-panel,.mobile-layout .settings-panel>.settings-row{width:100%;box-sizing:border-box;margin-left:0;margin-right:0}
+.mobile-layout .settings-panel .button-row{align-items:stretch;gap:8px}
+.mobile-layout .settings-panel .button-row>button,.mobile-layout .settings-panel .button-row>label.secondary{min-height:44px;box-sizing:border-box;white-space:normal;display:inline-flex;align-items:center;justify-content:center}
+.mobile-layout .settings-panel .custom-source-panel .button-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+.mobile-layout .settings-panel .account-form input{width:100%;min-width:0;box-sizing:border-box}
+.mobile-layout .settings-panel .extension-row{min-width:0;gap:10px;flex-wrap:wrap}
+.mobile-layout .settings-panel .extension-row>div{min-width:0;overflow-wrap:anywhere}
+.mobile-layout .settings-panel .settings-save>button{width:100%}
+@media(max-width:760px){.password-recovery-modal{padding:18px}.password-recovery-modal button{min-height:44px}}
+
+.mobile-layout .settings-panel .feature-heading{align-items:flex-start;justify-content:flex-start;flex-direction:column}
+.mobile-layout .settings-panel .feature-heading>div{width:100%;flex:none}
+.mobile-layout .settings-panel .feature-heading>.connection-pill{align-self:flex-start}
+.mobile-layout .settings-panel input:not([type=checkbox]):not([type=file]),.mobile-layout .settings-panel select{min-height:44px}
+.mobile-layout .settings-panel .feature-heading>label.secondary,.mobile-layout .account-recovery-button{min-height:44px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
+
+/* Keep source controls consistent with the reader theme. */
+.apk-search-label input,.source-manager-filter select{box-sizing:border-box;min-height:44px;width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;font-size:13px;line-height:1.4}
+.apk-search-label input::placeholder{color:var(--muted);opacity:1}
+.apk-search-label input:focus-visible,.source-manager-filter select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.settings-issue-badge,.source-issue-tag{display:inline-flex;align-items:center;align-self:flex-start;width:max-content;max-width:100%;padding:3px 7px;border-radius:6px;font-size:11px;line-height:1.4;font-weight:600;color:#f5d39a;background:#a4752926;border:1px solid #a4752970}
+.settings-issue-badge{margin-left:7px;min-width:19px;justify-content:center;padding:1px 5px}
+.source-availability-panel.has-source-issues{border-color:#a4752980}
+.has-source-issues>.source-manager-skips>summary{color:#f5d39a}
+.extension-has-issue{border-left:3px solid #bd914d!important;padding-left:12px!important}
+.apk-extension-results.apk-layout-list{grid-template-columns:1fr}
+.apk-layout-list .extension-row{border-radius:0;background:transparent}
+.apk-layout-stacked .extension-row>.button-row{display:grid;grid-template-columns:1fr;align-self:stretch;width:100%}
+.apk-layout-stacked .extension-row>.button-row>button{width:100%}
+.mobile-layout .settings-panel .apk-layout-list .extension-row{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0;padding:12px 0;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}
+.mobile-layout .settings-panel .apk-layout-list .extension-row>.button-row{display:flex;flex-direction:row;flex-wrap:wrap;width:100%;justify-content:flex-start}
+.mobile-layout .settings-panel .apk-layout-list .extension-identity{flex-direction:row;align-items:center}
+.mobile-layout .settings-panel .apk-layout-stacked .extension-row{display:flex;flex-direction:column;align-items:stretch;margin:0;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--bg);gap:14px}
+.mobile-layout .settings-panel .apk-layout-stacked .extension-identity{flex-direction:column;align-items:flex-start}
+.mobile-layout .apk-layout-stacked .extension-icon{width:48px;height:48px}
+@media(min-width:600px){.mobile-layout .apk-layout-stacked{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.light .settings-issue-badge,.light .source-issue-tag,.light .has-source-issues>.source-manager-skips>summary{color:#784b10}
+
+.extension-identity>div>b{display:block}.extension-identity .source-issue-tag{margin-top:5px}

@@ -25,6 +25,11 @@ if (Test-Path "$sdkRoot\Lib") {
         $env:PATH = "$sdkRoot\bin\$sdkVersion\x64;$env:PATH"
         $env:WindowsSdkDir = "$sdkRoot\"
         $env:WindowsSDKVersion = "$sdkVersion\"
+        # Registry discovery can select a stale SDK path even when PATH is valid.
+        $resourceCompiler = Join-Path $sdkRoot "bin\$sdkVersion\x64\rc.exe"
+        if (Test-Path -LiteralPath $resourceCompiler) {
+            $env:RC_x86_64_pc_windows_msvc = $resourceCompiler
+        }
     }
 }
 if($Action-in@('build','package','run')){& (Join-Path $PSScriptRoot 'prepare-mobile-apk.ps1')|Out-Null}

@@ -14,6 +14,14 @@ The Mreader managed project is configured in `cloud/project.json` using its publ
 
 Ordinary users of this configured build only need to create an account, confirm their email, and sign into the same account on each device. No device needs to run or expose a server. The setup steps above describe configuring a different managed project.
 
+## Password recovery
+
+In **Settings → Account & sync → Forgot password?**, request a recovery email. Copy the original password reset link from that email, paste it into Mreader, and enter and confirm the new password. Opening the link in a browser first may consume it; request a fresh email if the link is expired or already used.
+
+The native client requests `/auth/v1/recover`, verifies the recovery token through `/auth/v1/verify`, then updates the password through `/auth/v1/user`. Only HTTPS recovery links for the configured project are accepted; unrelated hosts, non-recovery links, duplicate tokens and access-token fragments are rejected. The supplied link is parsed locally, never followed as an arbitrary URL. The recovery session is not saved or substituted for the reader's active session, and no library/profile/progress switch occurs.
+
+Reset links and passwords are held only for the operation, are not written to preferences or backups, and are cleared from the form on success or when the dialog closes. Headless UI tests use mocked responses; they do not send real recovery emails. A live end-to-end mail-delivery/password-change check is still required before claiming production recovery has been verified.
+
 ## Data and conflict handling
 
 Each account has one RLS-protected row keyed to `auth.uid()`. SQL grants only authenticated owner access. A compare-and-swap RPC checks `revision` before committing; conflicting writes cause the client to fetch, merge, and retry up to four times.

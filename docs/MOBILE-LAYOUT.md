@@ -73,3 +73,10 @@ metadata backup. No library, downloaded file, extension package or reading recor
 is removed. Tests: `npm run test:browse` covers reload persistence, isolation,
 version changes, cooldown expiry, offline protection, recovery controls and no
 requests when all sources are skipped.
+
+
+## Source settings controls
+
+Android Files & backup uses one layout and hides its ineffective List/Stacked switches. Desktop keeps the controls. APK source extensions still offer both views: List uses compact flat rows and Stacked uses bordered cards, with two columns on larger Android screens. The selected APK view is saved in preferences.
+
+Source problems appear in the Sources tab badge, the source-manager panel and affected extension rows. Skipped-source and help disclosures remember their open/closed state within the device/profile session, including during source search, layout changes and account-sync rerenders. Disconnected old DOM toggle events are ignored. Region restrictions remain reported honestly; visual warnings do not bypass them.

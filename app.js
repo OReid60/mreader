@@ -786,6 +786,7 @@ function closeReader() {
   if(returnDetail && bookById(returnDetail)){state.detail=bookById(returnDetail);renderDetails();}
 }
 function handleAppBack() {
+  const recovery=document.querySelector('#password-recovery');if(recovery){recovery.closeRecovery?.();return true;}
   const coverSearch=document.querySelector("#cover-image-search");if(coverSearch){coverSearch.remove();return true;}
   if(document.querySelector("#cover-enlargement")){document.querySelector("#cover-enlargement").remove();return true;}
   if(state.reader || state.detail || state.mobileSearch || navigationHistory.length || document.querySelector('#mobile-sheet') || state.page!=='Library')lastRootBack=0;
@@ -807,26 +808,23 @@ function handleAppBack() {
 }
 function settingsContentView() {
   const s = state.settings;
-  return `<div class="heading"><div><div class="eyebrow">MAKE YOURSELF AT HOME</div><h1>Settings</h1><p class="sub">A reading space that feels like yours.</p></div></div>${typeof accountView === "function" ? accountView() : ""}${typeof extensionView === "function" ? extensionView() : ""}<form id="settings-form"><div class="settings-row"><div><h3>Cover image search</h3><p>Show Search cover images in manga previews.</p></div><input name="showCoverSearch" type="checkbox" role="switch" aria-label="Show cover image search" ${s.showCoverSearch!==false?"checked":""}></div><div class="settings-row"><div><h3>Startup page</h3><p>Choose the page Mreader opens on this device.</p></div><select name="startPage" aria-label="Startup page">${["Library","Updates","History","Browse","Downloads"].map(page=>`<option ${page===(s.startPage || "Library")?"selected":""}>${page}</option>`).join("")}</select></div><div class="settings-row"><div><h3>Appearance</h3><p>Your preferred library theme.</p></div><select name="theme"><option value="dark" ${s.theme === "dark" ? "selected" : ""}>Dark</option><option value="light" ${s.theme === "light" ? "selected" : ""}>Light</option></select></div><div class="settings-row"><div><h3>Chapter language</h3><p>Applies to MangaDex searches and chapter refreshes.</p></div><select name="language">${Object.entries(
-    {
-      en: "English",
-      es: "Spanish",
-      "es-la": "Spanish (Latin America)",
-      "pt-br": "Portuguese (Brazil)",
-      fr: "French",
-      ja: "Japanese",
-      de: "German",
-      it: "Italian",
-    },
-  )
-    .map(
-      ([k, v]) =>
-        `<option value="${k}" ${s.language === k ? "selected" : ""}>${v}</option>`,
-    )
-    .join(
-      "",
-    )}</select></div>${typeof useMobileLayout === "function" && useMobileLayout() ? `<div class="settings-row"><div><h3>Data saver</h3><p>Use smaller MangaDex pages to save bandwidth.</p></div><input name="dataSaver" type="checkbox" ${s.dataSaver ? "checked" : ""}></div>` : ""}<div class="settings-row"><div><h3>App version</h3><p>Installed on this device.</p></div><output class="app-version" aria-label="Installed app version">${typeof featureState!=="undefined"&&featureState.appVersion?esc(featureState.appVersion):"Version unavailable"}</output></div><div class="settings-save"><button class="primary" type="submit">Save preferences</button></div></form><div class="settings-row"><div><h3>Local manga</h3><p>CBZ, ZIP, CBR, RAR, PDF, or image folders. Drop files anywhere to import.</p><p>Files stay in place. CBR/RAR uses 7-Zip; PDF uses the built-in viewer.</p></div><div class="button-row">${button("import", "Import files")}${button("import-folder", "Import folder")}</div></div><div class="settings-row"><div><h3>Backups</h3><p>Metadata, reading progress, preferences and custom cover art. Manga files and passwords are excluded.</p><p>Restore merges with your library. Downloads may need downloading again.</p></div><div class="button-row">${button("export", "Export backup")}${button("restore", "Restore backup")}</div></div><div class="settings-row"><div><h3>Mreader</h3><p>Manga reading on desktop, phones and tablets.</p></div><span class="sub">Mreader</span></div>`;
+  const mobile = typeof useMobileLayout === "function" && useMobileLayout();
+  const languages = {en:"English",es:"Spanish","es-la":"Spanish (Latin America)","pt-br":"Portuguese (Brazil)",fr:"French",ja:"Japanese",de:"German",it:"Italian"};
+  return `<form id="settings-form">
+    <section class="settings-group" aria-labelledby="reader-preferences-heading"><h2 id="reader-preferences-heading">Reader preferences</h2>
+      <div class="settings-row"><div><h3>Startup page</h3><p>Choose the page Mreader opens on this device.</p></div><select name="startPage" aria-label="Startup page">${["Library","Updates","History","Browse","Downloads"].map(page=>`<option ${page===(s.startPage||"Library")?"selected":""}>${page}</option>`).join("")}</select></div>
+      <div class="settings-row"><div><h3>Appearance</h3><p>Your preferred library theme.</p></div><select name="theme" aria-label="Appearance"><option value="dark" ${s.theme==="dark"?"selected":""}>Dark</option><option value="light" ${s.theme==="light"?"selected":""}>Light</option></select></div>
+      <div class="settings-row"><div><h3>Chapter language</h3><p>Applies to source searches and chapter refreshes where supported.</p></div><select name="language" aria-label="Chapter language">${Object.entries(languages).map(([value,label])=>`<option value="${value}" ${s.language===value?"selected":""}>${label}</option>`).join("")}</select></div>
+    </section>
+    <section class="settings-group" aria-labelledby="images-data-heading"><h2 id="images-data-heading">Images & data</h2>
+      <div class="settings-row settings-toggle"><div><h3>Cover image search</h3><p>Show Search cover images in manga previews.</p></div><input name="showCoverSearch" type="checkbox" role="switch" aria-label="Show cover image search" ${s.showCoverSearch!==false?"checked":""}></div>
+      ${mobile?`<div class="settings-row settings-toggle"><div><h3>Data saver</h3><p>Use smaller MangaDex pages to save bandwidth.</p></div><input name="dataSaver" type="checkbox" role="switch" aria-label="Data saver" ${s.dataSaver?"checked":""}></div>`:""}
+    </section>
+    <section class="settings-group" aria-labelledby="mreader-about-heading"><div class="settings-row"><div><h2 id="mreader-about-heading">Mreader</h2><p>Manga reading on desktop, phones and tablets.</p><p>Installed app version</p></div><output class="app-version" aria-label="Installed app version">${typeof featureState!=="undefined"&&featureState.appVersion?esc(featureState.appVersion):"Version unavailable"}</output></div></section>
+    <div class="settings-save"><button class="primary" type="submit">Save preferences</button></div>
+  </form><div class="settings-row"><div><h3>Local manga</h3><p>CBZ, ZIP, CBR, RAR, PDF, or image folders. Drop files anywhere to import.</p><p>Files stay in place. CBR/RAR uses 7-Zip; PDF uses the built-in viewer.</p></div><div class="button-row">${button("import","Import files")}${button("import-folder","Import folder")}</div></div>${backupMigrationView()}`;
 }
+
 document.addEventListener("click", async (e) => {
   const t = e.target.closest("[data-action]");
   if (!t || t.disabled) return;

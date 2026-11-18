@@ -8,6 +8,29 @@ use std::{
     sync::Mutex,
 };
 type Result<T> = std::result::Result<T, String>;
+fn recovery_token(project: &str, link: &str) -> Result<String> {
+    let invalid = "Copy the original password reset link from your Mreader email.";
+    if link.len() > 16384 { return Err(invalid.into()); }
+    let project = reqwest::Url::parse(project).map_err(|_| invalid)?;
+    let link = reqwest::Url::parse(link.trim()).map_err(|_| invalid)?;
+    if project.scheme() != "https" || link.scheme() != "https"
+        || link.origin() != project.origin() || !link.username().is_empty()
+        || link.password().is_some() || link.fragment().is_some()
+        || link.path().trim_end_matches('/') != "/auth/v1/verify" {
+        return Err(invalid.into());
+    }
+    let pairs: Vec<_> = link.query_pairs().collect();
+    let kinds: Vec<_> = pairs.iter().filter(|(key, _)| key == "type").collect();
+    let tokens: Vec<_> = pairs.iter().filter(|(key, _)| key == "token" || key == "token_hash").collect();
+    if kinds.len() != 1 || kinds[0].1 != "recovery" || tokens.len() != 1 {
+        return Err(invalid.into());
+    }
+    let token = tokens[0].1.as_ref();
+    if !(32..=2048).contains(&token.len()) || !token.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-') {
+        return Err(invalid.into());
+    }
+    Ok(token.into())
+}
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
@@ -489,6 +512,31 @@ impl Cloud {
         *self.session.lock().map_err(|e| e.to_string())? = Some(session.clone());
         Ok(())
     }
+    pub async fn request_password_recovery(&self, email: &str) -> Result<()> {
+        let cfg = self.config.lock().map_err(|e| e.to_string())?.clone();
+        let email = email.trim();
+        if cfg.url.is_empty() || cfg.public_key.is_empty() { return Err("Account recovery is currently unavailable.".into()); }
+        if email.len() > 320 || !email.contains('@') || email.chars().any(char::is_whitespace) || email.chars().any(char::is_control) {
+            return Err("Enter your account email address.".into());
+        }
+        Self::json(&self.client, self.client.post(format!("{}/auth/v1/recover", cfg.url))
+            .header("apikey", &cfg.public_key).json(&json!({"email":email}))).await?;
+        Ok(())
+    }
+    pub async fn reset_password(&self, link: &str, password: &str) -> Result<()> {
+        let cfg = self.config.lock().map_err(|e| e.to_string())?.clone();
+        let count = password.chars().count();
+        if !(8..=1024).contains(&count) { return Err("Use a password between 8 and 1,024 characters.".into()); }
+        let token = recovery_token(&cfg.url, link)?;
+        let verified = Self::json(&self.client, self.client.post(format!("{}/auth/v1/verify", cfg.url))
+            .header("apikey", &cfg.public_key).json(&json!({"token_hash":token,"type":"recovery"}))).await
+            .map_err(|_| "The reset link is invalid or expired. Request a new recovery email.")?;
+        let access = verified["access_token"].as_str().ok_or("Recovery could not be verified.")?;
+        Self::json(&self.client, self.client.put(format!("{}/auth/v1/user", cfg.url))
+            .header("apikey", &cfg.public_key).bearer_auth(access).json(&json!({"password":password}))).await?;
+        // Do not save the recovery session or switch the active library/profile.
+        Ok(())
+    }
     pub async fn authenticate(
         &self,
         client: &reqwest::Client,
@@ -665,6 +713,26 @@ async fn exchange(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn password_recovery_accepts_only_original_same_project_recovery_links() {
+        let project = "https://account.example.test";
+        let token = "a".repeat(64);
+        let link = format!("{project}/auth/v1/verify?token={token}&type=recovery&redirect_to=http%3A%2F%2Flocalhost%3A3000");
+        assert_eq!(super::recovery_token(project, &link).unwrap(), token);
+        for invalid in [
+            link.replace("account.example.test", "other.example.test"),
+            link.replacen("https://", "http://", 1),
+            link.replace("type=recovery", "type=signup"),
+            format!("{link}&token_hash={token}"),
+            format!("{link}&type=recovery"),
+            format!("{link}#access_token=not-accepted"),
+            link.replace("https://", "https://user@"),
+            link.replace("/verify?", "/unrelated?"),
+            link.replace(&token, "short"),
+        ] {
+            assert!(super::recovery_token(project, &invalid).is_err());
+        }
+    }
     use super::*;
     fn assert_jsonb_safe(value: &Value) {
         match value {
