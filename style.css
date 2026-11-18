@@ -1533,3 +1533,5 @@ body.mobile-layout, body.mobile-layout.light {
 .mobile-layout .browse-source-notice{margin:0 8px 10px}
 
 .source-manager-filter{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.source-manager-filter select{max-width:100%;min-width:180px}.source-manager-skips{margin-top:16px}.source-manager-skips summary{cursor:pointer;font-weight:600}.source-manager-skips>p{color:var(--muted)}
+
+.cover-art-help{font-size:11px;line-height:1.45;color:var(--muted);overflow-wrap:anywhere}.mobile-layout .detail-cover>.cover-art-warning{margin-top:10px;min-width:0}.mobile-layout .detail-cover>.cover-art-warning .notice{font-size:11px;line-height:1.45;padding:8px;overflow-wrap:anywhere}.mobile-layout .detail-cover>.cover-art-warning button{max-width:100%;white-space:normal;padding:6px 8px;font-size:11px}

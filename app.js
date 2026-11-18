@@ -383,7 +383,7 @@ function renderDetails() {
     layer = document.createElement("div");
   layer.id = "detail";
   layer.className = "modal-backdrop manga-detail-backdrop";
-  layer.innerHTML = `<section class="modal" role="dialog" aria-modal="true" aria-label="${esc(b.title)}">${button("close-detail", icon("close"), "icon-button close", 'aria-label="Close details"')}<div class="detail-top"><div class="detail-cover"><div class="cover" ${saved?`data-action="choose-custom-cover" data-id="${esc(b.id)}" role="button" tabindex="0" aria-label="Change cover art for ${esc(b.title)}"`:""}>${cover(b)}</div>${!mobile?mangaSourceView(b):""}</div><div class="detail-copy">${mobile?`<div class="detail-source-row">${mangaSourceView(b)}${mangaDownloadBadge(b)}</div>`:""}<div class="eyebrow">${esc(b.status || "Unknown status")}</div><h2>${esc(b.title)}</h2><p class="sub">${esc(b.author)}</p><div class="tags">${b.tags
+  layer.innerHTML = `<section class="modal" role="dialog" aria-modal="true" aria-label="${esc(b.title)}">${button("close-detail", icon("close"), "icon-button close", 'aria-label="Close details"')}<div class="detail-top"><div class="detail-cover"><div class="cover" ${saved?`data-action="choose-custom-cover" data-id="${esc(b.id)}" role="button" tabindex="0" aria-label="Change cover art for ${esc(b.title)}"`:""}>${cover(b)}</div>${mobile?mangaCoverWarningView(b):mangaSourceView(b)}</div><div class="detail-copy">${mobile?`<div class="detail-source-row">${mangaSourceView(b)}${mangaDownloadBadge(b)}</div>`:""}<div class="eyebrow">${esc(b.status || "Unknown status")}</div><h2>${esc(b.title)}</h2><p class="sub">${esc(b.author)}</p><div class="tags">${b.tags
     .filter(tag => !tag.startsWith("mreader:"))
     .slice(0, 4)
     .map((t) => `<span>${esc(t)}</span>`)
@@ -506,7 +506,7 @@ function loadCovers() {
             target.replaceWith(img);
           }
       })
-      .catch(() => {if(generation!==(coverGeneration.get(id)||0))return;coverFailed.add(id);if(b.source.startsWith('apk:')&&typeof repairMissingBookExtensions==='function'&&!mangaExtensionInfo(b).installed)void repairMissingBookExtensions();if(state.detail?.id===id&&!state.reader){const info=document.querySelector('#detail .manga-source-info');if(info)info.outerHTML=mangaSourceView(b);}})
+      .catch(() => {if(generation!==(coverGeneration.get(id)||0))return;coverFailed.add(id);if(b.source.startsWith('apk:')&&typeof repairMissingBookExtensions==='function'&&!mangaExtensionInfo(b).installed)void repairMissingBookExtensions();if(state.detail?.id===id&&!state.reader){const info=document.querySelector('#detail .manga-source-info');if(info)info.outerHTML=mangaSourceView(b);if(typeof useMobileLayout==='function'&&useMobileLayout()){const warning=document.querySelector('#detail .detail-cover .cover-art-warning');if(warning)warning.outerHTML=mangaCoverWarningView(b);}}})
       .finally(() => {
         coverPending.delete(id);
         setTimeout(loadCovers, 0);

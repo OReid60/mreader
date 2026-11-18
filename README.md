@@ -8,7 +8,7 @@
 
 A reader for Windows, Android phones and tablets, and Linux.
 
-[**Download Mreader 0.3.35**](https://github.com/OReid60/mreader/releases/tag/v0.3.35) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
+[**Download Mreader 0.3.36**](https://github.com/OReid60/mreader/releases/tag/v0.3.36) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
 
 </div>
 
@@ -30,11 +30,11 @@ A reader for Windows, Android phones and tablets, and Linux.
 
 Install Android updates over the existing app to keep its data. Source extensions, repository links, and manga content are not included. Users obtain and verify repositories independently. Source availability depends on the provider and extension author.
 
-## What’s new in 0.3.35
+## What’s new in 0.3.36
 
-Search cover images is now a separate action in saved manga previews, even when a cover is present or its warning is hidden. Settings → General → Cover image search controls its visibility. Library category management is available from + before Default on desktop and mobile. Retry source cover remains inside Find cover art.
+On mobile, cover-loading warnings and Show cover warning appear below the cover art inside the manga preview. Source identity stays beside the cover. A short note explains that Search cover images lets you add your own cover art.
 
-See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.35) for downloads and validation notes.
+See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.36) for downloads and validation notes.
 
 ## Build and contribute
 
