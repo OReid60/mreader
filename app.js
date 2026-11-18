@@ -9,6 +9,7 @@ const icons = {
   settings:
     '<path d="m9 3-1 3-3 1 1 3-2 2 2 2-1 3 3 1 1 3h6l1-3 3-1-1-3 2-2-2-2 1-3-3-1-1-3z"/><circle cx="12" cy="12" r="3"/>',
   search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>',
+  trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>',
   plus: '<path d="M12 4v16M4 12h16"/>',
   grid: '<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/>',
   list: '<path d="M8 5h13M8 12h13M8 19h13M3 5h1M3 12h1M3 19h1"/>',
@@ -383,13 +384,13 @@ function renderDetails() {
     layer = document.createElement("div");
   layer.id = "detail";
   layer.className = "modal-backdrop manga-detail-backdrop";
-  layer.innerHTML = `<section class="modal" role="dialog" aria-modal="true" aria-label="${esc(b.title)}">${button("close-detail", icon("close"), "icon-button close", 'aria-label="Close details"')}<div class="detail-top"><div class="detail-cover"><div class="cover" ${saved?`data-action="choose-custom-cover" data-id="${esc(b.id)}" role="button" tabindex="0" aria-label="Change cover art for ${esc(b.title)}"`:""}>${cover(b)}</div>${mobile?mangaCoverWarningView(b):mangaSourceView(b)}</div><div class="detail-copy">${mobile?`<div class="detail-source-row">${mangaSourceView(b)}${mangaDownloadBadge(b)}</div>`:""}<div class="eyebrow">${esc(b.status || "Unknown status")}</div><h2>${esc(b.title)}</h2><p class="sub">${esc(b.author)}</p><div class="tags">${b.tags
+  layer.innerHTML = `<section class="modal" role="dialog" aria-modal="true" aria-label="${esc(b.title)}">${button("close-detail", icon("close"), "icon-button close", 'aria-label="Close details"')}<div class="detail-top"><div class="detail-cover"><div class="cover" data-action="enlarge-cover" data-id="${esc(b.id)}" role="button" tabindex="0" aria-label="Enlarge cover art for ${esc(b.title)}">${cover(b)}</div>${saved&&state.settings.showCoverSearch!==false?button('search-cover-images','Search cover images','secondary cover-search-button',`data-id="${esc(b.id)}"`):''}${mangaSourceView(b)}</div><div class="detail-copy"><div class="eyebrow">${esc(b.status || "Unknown status")}</div><h2>${esc(b.title)}</h2><p class="sub">${esc(b.author)}</p><div class="tags">${b.tags
     .filter(tag => !tag.startsWith("mreader:"))
     .slice(0, 4)
     .map((t) => `<span>${esc(t)}</span>`)
     .join(
       "",
-    )}</div><p class="description">${esc(b.description || "No description available.")}</p><div class="button-row">${button(saved ? "remove" : "add", icon(saved ? "library" : "plus") + (saved ? " Remove from library" : " Add to library"), "primary", `data-id="${esc(b.id)}"`)}${saved ? button("favorite", icon("heart"), `secondary ${b.favorite ? "favorited" : ""}`, `data-id="${esc(b.id)}" aria-label="Toggle favorite"`) : ""}${saved && b.chapters.length ? button("resume", "Start reading", "secondary", `data-id="${esc(b.id)}"`) : ""}${saved && state.settings.showCoverSearch!==false ? button("search-cover-images", "Search cover images", "secondary", `data-id="${esc(b.id)}"`) : ""}${saved ? button("mobile-assign-category", "Category: " + esc(bookCategory(b)), "secondary", `data-id="${esc(b.id)}"`) : ""}</div></div></div>${sourceAlternatives(b)}${!mobile&&downloadJobs.has(b.id)?downloadQueueView():""}<div class="chapter-heading"><h3>${b.chapters.length} chapters</h3><label class="chapter-sort">Order<select id="chapter-order" aria-label="Chapter order"><option value="asc" ${chapterOrder()==="asc"?"selected":""}>Ascending</option><option value="desc" ${chapterOrder()==="desc"?"selected":""}>Descending</option></select></label>${saved && b.source !== "local" ? button("download-all", "Download all chapters", "primary", `data-id="${esc(b.id)}"`) + button("download-unread", "Download unread", "secondary", `data-id="${esc(b.id)}"`) + button("refresh-chapters", "Refresh", "secondary", `data-id="${esc(b.id)}"`) : ""}</div>${
+    )}</div><p class="description">${esc(b.description || "No description available.")}</p><div class="button-row detail-actions">${saved?`${b.chapters.length?button('resume','Start reading','primary',`data-id="${esc(b.id)}"`):''}${button('favorite',icon('heart'),`secondary ${b.favorite?'favorited':''}`,`data-id="${esc(b.id)}" aria-label="Toggle favorite"`)}${mobile?mangaDownloadBadge(b):''}${button('remove',icon('trash'),'secondary',`data-id="${esc(b.id)}" aria-label="Remove from library" title="Remove from library"`)}`:button('add',icon('plus')+' Add to library','primary',`data-id="${esc(b.id)}"`)}${saved?button('mobile-assign-category','Category: '+esc(bookCategory(b)),'secondary',`data-id="${esc(b.id)}"`):''}</div></div></div>${sourceAlternatives(b)}${!mobile&&downloadJobs.has(b.id)?downloadQueueView():""}<div class="chapter-heading"><h3>${b.chapters.length} chapters</h3><label class="chapter-sort">Order<select id="chapter-order" aria-label="Chapter order"><option value="asc" ${chapterOrder()==="asc"?"selected":""}>Ascending</option><option value="desc" ${chapterOrder()==="desc"?"selected":""}>Descending</option></select></label>${saved && b.source !== "local" ? button("download-all", "Download all chapters", "primary", `data-id="${esc(b.id)}"`) + button("download-unread", "Download unread", "secondary", `data-id="${esc(b.id)}"`) + button("refresh-chapters", "Refresh", "secondary", `data-id="${esc(b.id)}"`) : ""}</div>${
     state.detailLoading
       ? '<div class="empty"><span class="spinner"></span> Loading chapters…</div>'
       : state.detailError
@@ -504,9 +505,10 @@ function loadCovers() {
             img.alt = b.title + " cover";
             img.loading = "lazy";
             target.replaceWith(img);
+            if(state.detail?.id===id){const note=document.querySelector("#detail .cover-art-warning");if(note)note.outerHTML=mangaCoverWarningView(b);}
           }
       })
-      .catch(() => {if(generation!==(coverGeneration.get(id)||0))return;coverFailed.add(id);if(b.source.startsWith('apk:')&&typeof repairMissingBookExtensions==='function'&&!mangaExtensionInfo(b).installed)void repairMissingBookExtensions();if(state.detail?.id===id&&!state.reader){const info=document.querySelector('#detail .manga-source-info');if(info)info.outerHTML=mangaSourceView(b);if(typeof useMobileLayout==='function'&&useMobileLayout()){const warning=document.querySelector('#detail .detail-cover .cover-art-warning');if(warning)warning.outerHTML=mangaCoverWarningView(b);}}})
+      .catch(() => {if(generation!==(coverGeneration.get(id)||0))return;coverFailed.add(id);if(b.source.startsWith('apk:')&&typeof repairMissingBookExtensions==='function'&&!mangaExtensionInfo(b).installed)void repairMissingBookExtensions();if(state.detail?.id===id&&!state.reader){const info=document.querySelector('#detail .manga-source-info');if(info)info.outerHTML=mangaSourceView(b);if(typeof useMobileLayout==='function'&&useMobileLayout()){const warning=document.querySelector('#detail .cover-art-warning');if(warning)warning.outerHTML=mangaCoverWarningView(b);}}})
       .finally(() => {
         coverPending.delete(id);
         setTimeout(loadCovers, 0);
@@ -785,6 +787,7 @@ function closeReader() {
 }
 function handleAppBack() {
   const coverSearch=document.querySelector("#cover-image-search");if(coverSearch){coverSearch.remove();return true;}
+  if(document.querySelector("#cover-enlargement")){document.querySelector("#cover-enlargement").remove();return true;}
   if(state.reader || state.detail || state.mobileSearch || navigationHistory.length || document.querySelector('#mobile-sheet') || state.page!=='Library')lastRootBack=0;
   if(document.querySelector('#mobile-sheet')){closeMobileSheet();return true;}
   if(state.reader){closeReader();return true;}
@@ -1065,6 +1068,7 @@ document.addEventListener("submit", async (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
+    if(document.querySelector("#cover-enlargement")){document.querySelector("#cover-enlargement").remove();return;}
     if (state.reader) closeReader();
     else closeDetail();
     return;

@@ -21,7 +21,7 @@ object SourceVerificationBrowser {
     webViewClient=object:WebViewClient(){override fun shouldOverrideUrlLoading(view:WebView,request:WebResourceRequest):Boolean {val next=request.url;return request.isForMainFrame&&(next.scheme!="https"||next.host?.removePrefix("www.")!=host||(if(next.port<0)443 else next.port)!=port||next.userInfo!=null)};override fun onReceivedSslError(view:WebView,handler:SslErrorHandler,error:android.net.http.SslError){handler.cancel()}}
     setDownloadListener{_,_,_,_,_->};CookieManager.getInstance().setAcceptCookie(true)
    }
-   val close=Button(current).apply{text="Return to source manager";setOnClickListener{CookieManager.getInstance().flush();dialog?.dismiss()}}
+   val close=Button(current).apply{text="Return to Mreader";setOnClickListener{CookieManager.getInstance().flush();dialog?.dismiss()}}
    content.addView(close);content.addView(browser,LinearLayout.LayoutParams(-1,0,1f))
    val shown=Dialog(current,android.R.style.Theme_DeviceDefault_NoActionBar)
    shown.setContentView(content);shown.setOnDismissListener{browser.destroy();if(dialog===shown)dialog=null};dialog=shown;shown.show();shown.window?.setLayout(-1,-1)

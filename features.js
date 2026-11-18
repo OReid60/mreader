@@ -79,12 +79,12 @@ function mangaExtensionInfo(book){
 function mangaCoverWarningView(book){
  const info=mangaExtensionInfo(book),missing=!info.installed,hidden=(state.settings.dismissedCoverWarnings||[]).includes(book.id);
  const message=missing?(sourceRepair.running?'Checking and installing the associated extension…':sourceRepair.errors.get(book.source)||'This manga needs its source extension to load chapters and cover art. Add its repository in Settings → Sources; Mreader will check and install the match.'):(coverFailed.has(book.id)&&!hidden?'Cover art could not load. The extension is installed; the source may be offline, blocked, outdated, or have no cover.':'');
- const saved=state.books.some(b=>b.id===book.id),hint=saved&&state.settings.showCoverSearch!==false?'<p class="cover-art-help">You can add your own cover art using <strong>Search cover images</strong>.</p>':'';
+ const saved=state.books.some(b=>b.id===book.id),hint=saved&&!coverCache.has(book.id)&&!book.customCover?.jpeg&&state.settings.showCoverSearch!==false?'<p class="cover-art-help">You can add your own cover art using <strong>Search cover images</strong>.</p>':'';
  return `<div class="cover-art-warning">${message?`<p class="notice" role="status">${esc(message)}${!missing?button('cover-warning-hide','Hide warning','secondary',`data-id="${esc(book.id)}"`):''}</p>`:''}${!missing&&hidden&&coverFailed.has(book.id)?button('cover-warning-show','Show cover warning','secondary',`data-id="${esc(book.id)}"`):''}${hint}</div>`;
 }
 function mangaSourceView(book){
  const info=mangaExtensionInfo(book),missing=!info.installed,mobile=typeof useMobileLayout==='function'&&useMobileLayout();
- return `<section class="manga-source-info"><h3>Source / extension</h3><p>${esc(info.name)}${info.sourceName&&info.sourceName!==info.name?' · '+esc(info.sourceName):''}${info.language?' · '+esc(info.language):''}</p><small>${esc(info.kind)} · ${missing?'Extension needed':'Available'}${info.flagged?' · Flagged as not working':''}</small>${!mobile?mangaCoverWarningView(book):''}${missing?`<div class="button-row">${book.source.startsWith('apk:')?button('repair-book-source',sourceRepair.running?'Checking extension…':'Check / install extension','secondary',`data-id="${esc(book.id)}" ${sourceRepair.running?'disabled':''}`):''}${button('source-settings','Open Sources settings','secondary')}</div>`:''}</section>`;
+ return `<section class="manga-source-info"><h3>${book.source.startsWith('apk:')&&!missing?button('source-verify','Source / extension','source-website-link',`data-source-id="${esc(book.source)}" aria-label="Open source website for ${esc(book.title)}" title="Open source website and verify in the app"`):'Source / extension'}</h3><p>${esc(info.name)}${info.sourceName&&info.sourceName!==info.name?' · '+esc(info.sourceName):''}${info.language?' · '+esc(info.language):''}</p><small>${esc(info.kind)} · ${missing?'Extension needed':'Available'}${info.flagged?' · Flagged as not working':''}</small>${mangaCoverWarningView(book)}${sourceVerificationPreview(book.source)}${missing?`<div class="button-row">${book.source.startsWith('apk:')?button('repair-book-source',sourceRepair.running?'Checking extension…':'Check / install extension','secondary',`data-id="${esc(book.id)}" ${sourceRepair.running?'disabled':''}`):''}${button('source-settings','Open Sources settings','secondary')}</div>`:''}</section>`;
 }
 async function repairMissingBookExtensions(retry=false,onlyId=null){
  if(sourceRepair.running)return;
@@ -243,7 +243,7 @@ async function checkSourceAvailability(id){
  const scope=sourceSkipKey(),version=sourceVersion(id);sourceChecks.add(id);render();
  try{await cachedSourceSearch(id,'',id.startsWith('apk:')?1:0,true);if(scope!==sourceSkipKey()||version!==sourceVersion(id))return;clearSourceSkip(id);browseFailures.delete(id);toast('Source is available and enabled in All.');}
  catch(error){if(scope!==sourceSkipKey()||version!==sourceVersion(id))return;skipFailedSource(source,error);toast(browseProblemMessage(error));}
- finally{sourceChecks.delete(id);render();}
+ finally{sourceChecks.delete(id);render();if(state.detail)renderDetails();}
 }
 
 const titleKey=b=>b.title.normalize('NFKC').trim().toLocaleLowerCase().replace(/\s+/g,' ');
@@ -474,15 +474,15 @@ document.addEventListener('click',async event=>{
  if(t.dataset.action==='source-verify'&&!sourceChecks.has(t.dataset.sourceId)){
   const id=t.dataset.sourceId;sourceChecks.add(id);render();
   try{if(featureState.sourceVerification)await api('source_verification_finish',{id:featureState.sourceVerification.id,cancel:true});featureState.sourceVerification=await api('source_verification_open',{source:id});}
-  catch(error){toast(error);}finally{sourceChecks.delete(id);render();}
+  catch(error){toast(error);}finally{sourceChecks.delete(id);render();if(state.detail)renderDetails();}
  }
- if(['source-verify-finish','source-verify-cancel'].includes(t.dataset.action)&&featureState.sourceVerification){const session=featureState.sourceVerification;featureState.sourceVerification=null;try{await api('source_verification_finish',{id:session.id,cancel:t.dataset.action==='source-verify-cancel'});if(t.dataset.action==='source-verify-finish')await checkSourceAvailability(session.source);}catch(error){toast(error);}render();}
+ if(['source-verify-finish','source-verify-cancel'].includes(t.dataset.action)&&featureState.sourceVerification){const session=featureState.sourceVerification;featureState.sourceVerification=null;try{await api('source_verification_finish',{id:session.id,cancel:t.dataset.action==='source-verify-cancel'});if(t.dataset.action==='source-verify-finish')await checkSourceAvailability(session.source);}catch(error){toast(error);}render();if(state.detail)renderDetails();}
  if(t.dataset.action==='source-enable'&&!state.loading&&!sourceChecks.has(t.dataset.sourceId)){clearSourceSkip(t.dataset.sourceId);browseFailures.delete(t.dataset.sourceId);render();toast('Source enabled for the next All sources refresh.');}
  if(t.dataset.action==='source-check'&&!state.loading){const id=t.dataset.sourceId;if(state.page==='Browse'&&(state.source==='all'||state.source===id))await searchSource(false,true,state.source==='all'?[id]:null);else await checkSourceAvailability(id);}
  if(t.dataset.action==='repository-refresh')await apkAction('apk_repository',{url:t.dataset.repository,trustKey:null});
  if(t.dataset.action==='files-layout'){try{applySnapshot(await api('save_settings',{settings:{...state.settings,filesLayout:t.dataset.layout,komgaPassword:''}}));render();}catch(error){toast(error);}}
  if(['cover-warning-hide','cover-warning-show'].includes(t.dataset.action)){const ids=new Set(state.settings.dismissedCoverWarnings||[]);if(t.dataset.action==='cover-warning-hide')ids.add(t.dataset.id);else ids.delete(t.dataset.id);try{applySnapshot(await api('save_settings',{settings:{...state.settings,dismissedCoverWarnings:[...ids],komgaPassword:''}}));if(state.detail)renderDetails();}catch(error){toast(error);}}
- if(t.dataset.action==='choose-custom-cover'&&t.closest('#detail .detail-cover'))chooseCustomCover(t.dataset.id);
+ if(t.dataset.action==='enlarge-cover'&&t.closest('#detail .detail-cover'))enlargeCover(t.dataset.id);
  if(t.dataset.action==='search-cover-images')showCoverImageSearch(t.dataset.id);
  if(t.dataset.action==='retry-source-cover'){
   const id=t.dataset.id;coverGeneration.set(id,(coverGeneration.get(id)||0)+1);const old=coverCache.get(id);if(old)URL.revokeObjectURL(old);coverCache.delete(id);coverFailed.delete(id);loadCovers();toast('Retrying cover from its installed source…');
@@ -500,7 +500,7 @@ function chooseCustomCover(id){
  const input=document.createElement('input');input.type='file';input.accept='image/jpeg,image/png,image/webp,image/gif,image/bmp';input.id='custom-cover-file';input.hidden=true;document.body.append(input);
  input.addEventListener('cancel',()=>input.remove());input.onchange=async()=>{try{if(input.files?.[0])await applyCustomCover(id,input.files[0]);}catch(error){toast(error);}finally{input.remove();}};input.click();
 }
-document.addEventListener('keydown',event=>{if(['Enter',' '].includes(event.key)&&event.target.matches('[data-action="choose-custom-cover"]')){event.preventDefault();event.target.click();}});
+document.addEventListener('keydown',event=>{if(['Enter',' '].includes(event.key)&&event.target.matches('[data-action="enlarge-cover"]')){event.preventDefault();event.target.click();}});
 document.addEventListener("click",async e=>{
   const t=e.target.closest("[data-action]");if(!t)return;
   if(t.dataset.action==="extension-flag"){
@@ -875,4 +875,16 @@ function showCoverImageSearch(id){
   if(action==='cover-image-select'){layer.remove();chooseCustomCover(id);}
   if(action==='cover-google-open'){try{if(window.MreaderChrome?.searchCoverImages)window.MreaderChrome.searchCoverImages(book.title);else await api('cover_image_search',{bookId:id});}catch(error){toast(error);}}
  });document.body.append(layer);
+}
+
+function sourceVerificationPreview(source){
+ return featureState.sourceVerification?.source===source?`<div class="preview-verification" role="status"><p>Complete the human verification in the source browser, then return here.</p>${button('source-verify-finish','Finish verification','secondary')}${button('source-verify-cancel','Cancel verification','secondary')}</div>`:'';
+}
+function enlargeCover(id){
+ const book=state.books.find(b=>b.id===id)||(state.detail?.id===id?state.detail:null),url=coverCache.get(id);
+ if(!book||!url){toast('No cover art is available. Use Search cover images to add one.');return;}
+ document.querySelector('#cover-enlargement')?.remove();
+ const layer=document.createElement('div');layer.id='cover-enlargement';layer.className='modal-backdrop cover-enlargement';
+ layer.innerHTML=`<section role="dialog" aria-modal="true" aria-label="Enlarged cover for ${esc(book.title)}">${button('close-cover-enlargement',icon('close'),'icon-button', 'aria-label="Close enlarged cover"')}<img src="${esc(url)}" alt="${esc(book.title)} cover"></section>`;
+ layer.addEventListener('click',e=>{if(e.target===layer||e.target.closest('[data-action=close-cover-enlargement]')){layer.remove();document.querySelector('#detail [data-action=enlarge-cover]')?.focus();}});document.body.append(layer);layer.querySelector('button').focus();
 }
