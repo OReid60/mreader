@@ -2486,7 +2486,7 @@ dependencies = [
 
 [[package]]
 name = "mreader"
-version = "0.3.37"
+version = "0.3.38"
 dependencies = [
  "base64 0.22.1",
  "flate2",
