@@ -203,6 +203,11 @@ impl Desktop {
                 let chapter=data["chapters"].as_array().and_then(|rows|rows.iter().find(|r|r["url"]==args["url"])).ok_or("This chapter no longer exists at the source")?;
                 let data=gql(&c,"mutation($i:FetchChapterPagesInput!){fetchChapterPages(input:$i){pages}}",json!({"i":{"chapterId":chapter["runtimeId"]}})).await?;
                 let rows=data["fetchChapterPages"]["pages"].as_array().ok_or("Invalid runtime pages")?;
+                if rows.is_empty(){
+                    let chapter_url=chapter["url"].as_str().ok_or("Chapter URL missing")?;
+                    let pages=session_call(c,"pages".into(),vec![args["sourceId"].as_str().unwrap_or("").into(),chapter_url.into()]).await?;
+                    return Ok(Value::Array(pages.lines().map(|url|json!({"fallbackChapter":chapter_url,"imageUrl":url})).collect()));
+                }
                 Ok(Value::Array(rows.iter().map(|p|json!({"runtimePath":p})).collect()))
             }
             _ => Err("Unknown APK runtime operation".into())
@@ -210,6 +215,9 @@ impl Desktop {
     }
     pub async fn image(&self, args: Value) -> Result<Vec<u8>> {
         let c = self.start().await?;
+        if let Some(chapter)=args["page"]["fallbackChapter"].as_str(){
+            return session_bytes(c,"image".into(),vec![args["sourceId"].as_str().unwrap_or("").into(),chapter.into(),args["page"]["imageUrl"].as_str().ok_or("Image URL missing")?.into()]).await;
+        }
         let path = if let Some(path) = args["page"]["runtimePath"].as_str() {
             path.to_string()
         } else if let Some(url) = args["page"]["mangaUrl"].as_str() {
@@ -292,6 +300,26 @@ fn client() -> Result<&'static reqwest::Client> {
 }
 #[cfg(test)]mod cover_tests{
  use super::*;
+ #[test]fn chapter_loading_does_not_request_optional_details(){
+  use std::{io::Read,net::TcpListener};
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let address=listener.local_addr().unwrap();
+  let server=std::thread::spawn(move||{
+   let (mut socket,_)=listener.accept().unwrap();socket.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+   let mut bytes=Vec::new();let mut buffer=[0;4096];
+   let end=loop{let n=socket.read(&mut buffer).unwrap();assert!(n>0);bytes.extend_from_slice(&buffer[..n]);if let Some(i)=bytes.windows(4).position(|v|v==b"\r\n\r\n"){break i+4}};
+   let header=String::from_utf8_lossy(&bytes[..end]).to_lowercase();
+   let length=header.lines().find_map(|l|l.strip_prefix("content-length: ").and_then(|s|s.parse::<usize>().ok())).unwrap();
+   while bytes.len()<end+length{let n=socket.read(&mut buffer).unwrap();assert!(n>0);bytes.extend_from_slice(&buffer[..n]);}
+   let request:Value=serde_json::from_slice(&bytes[end..end+length]).unwrap();
+   assert_eq!(request["variables"]["i"],json!({"id":7,"fetchManga":false,"fetchChapters":true}));
+   let body=json!({"data":{"fetchMangaAndChapters":{"manga":{"url":"/title","title":"Fixture"},"chapters":[{"id":11,"url":"/title/chapter-1","name":"Chapter 1","chapterNumber":1,"scanlator":null}]}}}).to_string();
+   write!(socket,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
+  });
+  let c=Connection{url:format!("http://{address}"),password:"fixture-only".into(),session_port:0};
+  let result=tauri::async_runtime::block_on(chapters(&c,7)).unwrap();
+  assert_eq!(result["chapters"][0]["url"],"/title/chapter-1");
+  assert_eq!(result["chapters"][0]["runtimeId"],11);server.join().unwrap();
+ }
  #[test]fn failed_saved_thumbnail_refreshes_exact_source_once(){
   use std::{io::Read,net::TcpListener};
   let listener=TcpListener::bind("127.0.0.1:0").unwrap();let address=listener.local_addr().unwrap();
@@ -368,7 +396,8 @@ async fn manga_id(c: &Connection, source: &Value, url: &str, title: &str) -> Res
     )
 }
 async fn chapters(c: &Connection, id: i64) -> Result<Value> {
-    let data=gql(c,"mutation($i:FetchMangaAndChaptersInput!){fetchMangaAndChapters(input:$i){manga{url title} chapters{id url name chapterNumber scanlator}}}",json!({"i":{"id":id,"fetchManga":true,"fetchChapters":true}})).await?;
+    // Chapter/page loading must not depend on the optional summary/cover parser.
+    let data=gql(c,"mutation($i:FetchMangaAndChaptersInput!){fetchMangaAndChapters(input:$i){manga{url title} chapters{id url name chapterNumber scanlator}}}",json!({"i":{"id":id,"fetchManga":false,"fetchChapters":true}})).await?;
     let result = &data["fetchMangaAndChapters"];
     let rows = result["chapters"]
         .as_array()
@@ -557,16 +586,19 @@ async fn download_runtime(url: &str, path: &Path, expected: &str) -> Result<()> 
 }
 
 async fn session_call(c:Connection,operation:String,values:Vec<String>)->Result<String>{
+ String::from_utf8(session_bytes(c,operation,values).await?).map_err(|e|e.to_string())
+}
+async fn session_bytes(c:Connection,operation:String,values:Vec<String>)->Result<Vec<u8>>{
  tauri::async_runtime::spawn_blocking(move||{
   use std::io::{Read,Write};
   let mut socket=std::net::TcpStream::connect_timeout(&format!("127.0.0.1:{}",c.session_port).parse().unwrap(),std::time::Duration::from_secs(5)).map_err(|e|e.to_string())?;
-  socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).map_err(|e|e.to_string())?;
+  socket.set_read_timeout(Some(std::time::Duration::from_secs(if matches!(operation.as_str(),"pages"|"image"){90}else{5}))).map_err(|e|e.to_string())?;
   socket.set_write_timeout(Some(std::time::Duration::from_secs(5))).map_err(|e|e.to_string())?;
   fn frame(s:&mut std::net::TcpStream,text:&str)->Result<()>{let bytes=text.as_bytes();if bytes.len()>65536{return Err("Session value too large".into());}s.write_all(&(bytes.len() as u32).to_be_bytes()).and_then(|_|s.write_all(bytes)).map_err(|e|e.to_string())}
   frame(&mut socket,&c.password)?;frame(&mut socket,&operation)?;
   for (index,value) in values.iter().enumerate(){frame(&mut socket,value)?;if operation=="cookies"&&index==0{if values.len()>129{return Err("Too many cookies".into())}socket.write_all(&((values.len()-1) as u32).to_be_bytes()).map_err(|e|e.to_string())?;}}
   let mut ok=[0];socket.read_exact(&mut ok).map_err(|e|e.to_string())?;let mut length=[0;4];socket.read_exact(&mut length).map_err(|e|e.to_string())?;
-  let size=u32::from_be_bytes(length) as usize;if size>65536{return Err("Invalid session response".into())}let mut bytes=vec![0;size];socket.read_exact(&mut bytes).map_err(|e|e.to_string())?;let text=String::from_utf8(bytes).map_err(|e|e.to_string())?;
-  if ok[0]==1{Ok(text)}else{Err(text)}
+  let size=u32::from_be_bytes(length) as usize;let limit=if operation=="image"&&ok[0]==1{64*1024*1024}else{65536};if size>limit{return Err("Invalid session response".into())}let mut bytes=vec![0;size];socket.read_exact(&mut bytes).map_err(|e|e.to_string())?;
+  if ok[0]==1{Ok(bytes)}else{Err(String::from_utf8_lossy(&bytes).into_owned())}
  }).await.map_err(|e|e.to_string())?
 }

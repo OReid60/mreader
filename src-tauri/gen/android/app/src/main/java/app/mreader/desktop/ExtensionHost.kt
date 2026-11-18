@@ -109,7 +109,8 @@ object ExtensionHost {
                             JSONObject().put("hasNextPage",result.hasNextPage).put("mangas",JSONArray().apply {result.mangas.forEach {put(mangaJson(it))}})
                         }
                         "chapters" -> {
-                            val result=source.getMangaUpdate(manga(args), emptyList(),true,true)
+                            // Reading must not depend on a summary/cover parser succeeding.
+                            val result=chapterUpdate(source,manga(args))
                             if(chapterContext.size>16)chapterContext.clear()
                             chapterContext[source.id.toString()+"\u0000"+args.getString("url")]=result.chapters.associateBy{it.url}
                             JSONObject().put("manga",mangaJson(result.manga)).put("chapters",JSONArray().apply {result.chapters.forEach {c -> put(JSONObject().put("url",c.url).put("title",c.name).put("number",c.chapter_number.toString()).put("group",c.scanlator ?: "").put("memo",JSONObject(c.memo.toString())))}})
@@ -118,7 +119,7 @@ object ExtensionHost {
                             val key=source.id.toString()+"\u0000"+args.optString("mangaUrl")
                             val chapter=SChapter.create().apply {url=args.getString("url");name=args.optString("title");args.optJSONObject("memo")?.let{memo=Json.parseToJsonElement(it.toString()) as kotlinx.serialization.json.JsonObject}}
                             val prepared=if(chapter.memo.isEmpty())chapterContext[key]?.get(chapter.url)?:chapter else chapter
-                            val pages=try{source.getPageList(prepared)}catch(error:IllegalStateException){
+                            var pages=try{source.getPageList(prepared)}catch(error:IllegalStateException){
                                 if(error.message?.contains("Refresh the chapter list",true)!=true||args.optString("mangaUrl").isBlank())throw error
                                 // Older saved chapters lack extension memo. Recover context once
                                 // for this exact source/manga/chapter; never guess another chapter.
@@ -127,6 +128,7 @@ object ExtensionHost {
                                 chapterContext[key]=update.chapters.associateBy{it.url}
                                 source.getPageList(update.chapters.firstOrNull{it.url==chapter.url}?:throw error)
                             }
+                            if(pages.isEmpty() && source is HttpSource)pages=redirectedChapterPages(source,prepared)
                             JSONArray().apply {pages.forEach {p ->
                                 if(p.imageUrl.isNullOrEmpty())p.imageUrl=(source as? HttpSource)?.getImageUrl(p) ?: error("Source cannot resolve page images")
                                 put(JSONObject().put("index",p.index).put("url",p.url).put("imageUrl",p.imageUrl))
