@@ -1,13 +1,15 @@
 # Download Mreader
 
-[Open the 0.3.44 release page](https://github.com/OReid60/mreader/releases/tag/v0.3.44)
+[Open the 0.3.45 release page](https://github.com/OReid60/mreader/releases/tag/v0.3.45)
+
+[Read patch notes](PATCH-NOTES.md)
 
 This repository is private. Sign into a GitHub account with repository access to download release assets.
 
 | Device | File | Installation |
 | --- | --- | --- |
-| Windows 64-bit | `Mreader-0.3.44-portable.exe` | Download and run. No installer required. |
-| Android phones and tablets, ARM64 | `Mreader-0.3.44-arm64.apk` | Open the APK and allow installation from your browser or file manager when Android asks. Requires Android 8.0 or later. |
+| Windows 64-bit | `Mreader-0.3.45-portable.exe` | Download and run. No installer required. |
+| Android phones and tablets, ARM64 | `Mreader-0.3.45-arm64.apk` | Open the APK and allow installation from your browser or file manager when Android asks. Requires Android 8.0 or later. |
 | Linux | DEB / AppImage | Published after the matching Actions build and packaged-app checks pass. Check the release assets for availability. |
 
 ## Updating

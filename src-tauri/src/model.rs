@@ -70,7 +70,7 @@ pub fn preserve_device_chapters(incoming:&mut Vec<Chapter>,existing:&[Chapter]){
 pub struct Settings {
     #[serde(default = "default_show_cover_search")]
     pub show_cover_search: bool,
-    #[serde(default = "default_apk_layout")]
+    #[serde(default = "default_files_layout")]
     pub files_layout: String,
     #[serde(default)]
     pub dismissed_cover_warnings: Vec<String>,
@@ -98,7 +98,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             show_cover_search: true,
-            files_layout: default_apk_layout(),
+            files_layout: default_files_layout(),
             dismissed_cover_warnings: Vec::new(),
             flagged_extensions: Vec::new(),
             apk_layout: default_apk_layout(),
@@ -117,7 +117,8 @@ impl Default for Settings {
     }
 }
 fn default_show_cover_search() -> bool { true }
-fn default_apk_layout() -> String { "list".into() }
+fn default_files_layout() -> String { "list".into() }
+fn default_apk_layout() -> String { "stacked".into() }
 fn default_start_page() -> String { "Library".into() }
 fn default_reader_layout() -> String {
     "paged".into()
@@ -136,7 +137,7 @@ mod reader_layout_tests {
         legacy.as_object_mut().unwrap().remove("sidebarCollapsed");
         let old: Settings = serde_json::from_value(legacy).unwrap();
         assert!(old.show_cover_search);
-        assert_eq!(old.apk_layout, "list");
+        assert_eq!(old.apk_layout, "stacked");
         assert_eq!(old.start_page, "Library");
         assert!(!old.sidebar_collapsed);
         assert!(old.flagged_extensions.is_empty());

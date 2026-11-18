@@ -8,7 +8,7 @@
 
 A reader for Windows, Android phones and tablets, and Linux.
 
-[**Download Mreader 0.3.44**](https://github.com/OReid60/mreader/releases/tag/v0.3.44) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
+[**Download Mreader 0.3.45**](https://github.com/OReid60/mreader/releases/tag/v0.3.45) · [Patch notes](docs/PATCH-NOTES.md) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
 
 </div>
 
@@ -30,11 +30,11 @@ A reader for Windows, Android phones and tablets, and Linux.
 
 Install Android updates over the existing app to keep its data. Source extensions, repository links, and manga content are not included. Users obtain and verify repositories independently. Source availability depends on the provider and extension author.
 
-## What’s new in 0.3.44
+## What’s new in 0.3.45
 
-Settings groups related preferences, backup/migration tools and account/source sync. Password recovery is available inside Account & sync. Android has aligned controls, themed source fields, visible source-issue indicators and distinct APK List/Stacked layouts. Source disclosures preserve your open/closed choice during rerenders. Ineffective Files & backup layout switches are hidden on Android; desktop retains them.
+APK extensions now always use Stacked cards. Search Extension has an app-styled field, and Browse source opens a themed source picker instead of Android's system dialog. Source disclosures preserve their state across restarts. See the [patch notes](docs/PATCH-NOTES.md) for the full release history.
 
-See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.44) for downloads and validation notes.
+See the [release page](https://github.com/OReid60/mreader/releases/tag/v0.3.45) for downloads and validation notes.
 
 ## Build and contribute
 

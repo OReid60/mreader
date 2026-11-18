@@ -786,6 +786,7 @@ function closeReader() {
   if(returnDetail && bookById(returnDetail)){state.detail=bookById(returnDetail);renderDetails();}
 }
 function handleAppBack() {
+  const picker=document.querySelector('#source-picker');if(picker){picker.closePicker?.();return true;}
   const recovery=document.querySelector('#password-recovery');if(recovery){recovery.closeRecovery?.();return true;}
   const coverSearch=document.querySelector("#cover-image-search");if(coverSearch){coverSearch.remove();return true;}
   if(document.querySelector("#cover-enlargement")){document.querySelector("#cover-enlargement").remove();return true;}
@@ -992,11 +993,6 @@ document.addEventListener("input", (e) => {
 });
 document.addEventListener("change", async (e) => {
   try {
-    if(e.target.id==='source-manager-select'){
-      featureState.browseSourceChosen=true;
-      if(e.target.value!=='all')await api('source_prefer',{source:e.target.value});
-      state.source=e.target.value;render();return;
-    }
     if (e.target.id === "source") {
       featureState.browseSourceChosen = true;
       if(e.target.value!=='all')await api('source_prefer',{source:e.target.value});

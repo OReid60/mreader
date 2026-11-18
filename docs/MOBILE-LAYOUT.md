@@ -77,6 +77,8 @@ requests when all sources are skipped.
 
 ## Source settings controls
 
-Android Files & backup uses one layout and hides its ineffective List/Stacked switches. Desktop keeps the controls. APK source extensions still offer both views: List uses compact flat rows and Stacked uses bordered cards, with two columns on larger Android screens. The selected APK view is saved in preferences.
+Android Files & backup uses one layout and hides its ineffective List/Stacked switches. Desktop keeps the controls. APK source extensions use Stacked cards only, including when older preferences contained List. Larger Android screens show two card columns.
 
-Source problems appear in the Sources tab badge, the source-manager panel and affected extension rows. Skipped-source and help disclosures remember their open/closed state within the device/profile session, including during source search, layout changes and account-sync rerenders. Disconnected old DOM toggle events are ignored. Region restrictions remain reported honestly; visual warnings do not bypass them.
+Source problems appear in the Sources tab badge, the source-manager panel and affected extension rows. Skipped-source and help disclosures remember their open/closed state for the device/profile across restarts, source searches and account-sync rerenders. Disconnected old DOM toggle events are ignored. Region restrictions remain reported honestly; visual warnings do not bypass them.
+
+Browse source uses an app-themed dialog with status badges and scrollable choices. Close, outside tap, Escape and Android back dismiss it without leaving Settings.
