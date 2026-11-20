@@ -1,6 +1,6 @@
 # Download Mreader
 
-[Open the 0.3.46 release page](https://github.com/OReid60/mreader-downloads/releases/tag/v0.3.46)
+[Open the 0.3.52 release page](https://github.com/OReid60/mreader-downloads/releases/tag/v0.3.52)
 
 [Read patch notes](PATCH-NOTES.md)
 
@@ -8,8 +8,8 @@ The source repository is public. Installers are hosted separately in the private
 
 | Device | File | Installation |
 | --- | --- | --- |
-| Windows 64-bit | `Mreader-0.3.46-portable.exe` | Download and run. No installer required. |
-| Android phones and tablets, ARM64 | `Mreader-0.3.46-arm64.apk` | Open the APK and allow installation from your browser or file manager when Android asks. Requires Android 8.0 or later. |
+| Windows 64-bit | `Mreader-0.3.52-portable.exe` | Download and run. No installer required. |
+| Android phones and tablets, ARM64 | `Mreader-0.3.52-arm64.apk` | Open the APK and allow installation from your browser or file manager when Android asks. Requires Android 8.0 or later. |
 | Linux | DEB / AppImage | Published after the matching Actions build and packaged-app checks pass. Check the release assets for availability. |
 
 ## Updating
@@ -23,6 +23,8 @@ Close Mreader before replacing the Windows executable. On Android, install over 
 - Download chapters on each device before reading offline. Account sync does not transfer downloaded manga pages.
 
 ## Install Android from the desktop app
+
+For this release, use the separate **Mreader-0.3.52-arm64.apk** from the release page. The tested desktop EXE still bundles Android 0.3.46 and reports internal version 0.3.46; its QR link will not install 0.3.52.
 
 In desktop Settings, open **Mobile app → Generate download code**. Connect the phone and desktop to the same local network, scan the QR code, and download the bundled APK. Keep Mreader open during the transfer. The link expires after five minutes; use **Regenerate download code** for a new link.
 
