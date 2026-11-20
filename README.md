@@ -1,53 +1,53 @@
-<div align="center">
-
-<img src="src-tauri/icons/icon.png" width="88" alt="Mreader icon">
-
-# Mreader
-
-**Your manga. Your progress. Across your devices.**
-
-A reader for Windows, Android phones and tablets, and Linux.
-
-[**Download Mreader 0.3.52**](https://github.com/OReid60/mreader-downloads/releases/tag/v0.3.52) · [Patch notes](docs/PATCH-NOTES.md) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
-
-</div>
-
-## Read your way
-
-- Fullscreen single-page reading or a continuous chapter strip.
-- Offline chapter downloads with progress and background downloading.
-- Library categories, Favorites, history, and chapter updates.
-- Account sync for reading progress, library choices, sources, and custom covers.
-- Mihon / Tachiyomi migration with a preview before importing.
-- Your choice of source extensions, plus local manga file import.
-
-## Get started
-
-1. [Download the app for your device](docs/DOWNLOAD.md).
-2. Import local manga or add an extension repository in **Settings → Sources**.
-3. Sign in with the same Mreader account on your devices to sync your library and progress.
-4. Download chapters before going offline. Downloads are stored separately on each device.
-
-Installer releases are in the separate private [distribution repository](https://github.com/OReid60/mreader-downloads); sign in with an invited GitHub account to download. This source repository remains public.
-
-Install Android updates over the existing app to keep its data. Source extensions, repository links, and manga content are not included. Users obtain and verify repositories independently. Source availability depends on the provider and extension author.
-
-## What’s new in 0.3.52
-
-Saved Library opens before background sync, secure account work no longer blocks startup, and cached cover art syncs across devices. Offline startup and reconnect sync were checked without changing reading progress. See the [patch notes](docs/PATCH-NOTES.md) for the full release history.
-
-See the [release page](https://github.com/OReid60/mreader-downloads/releases/tag/v0.3.52) for downloads and validation notes.
-
-Desktop limitation: the tested EXE still reports internal version 0.3.46 and shares the older 0.3.46 APK through its QR download. Use the separate 0.3.52 APK from the release page for Android updates.
-
-## Google Play readiness
-
-See the [Google Play publishing pack](docs/GOOGLE-PLAY-PUBLISHING.md) for draft store copy, verified build details and requirements still to resolve. The current extension-enabled APK is not ready for Play submission.
-
-## Build and contribute
-
-Mreader uses a shared Rust core with Tauri and an HTML/CSS interface. See [packaging](docs/PACKAGING.md), [source extensions](docs/apk-extensions.md), and [the code walkthrough](docs/LEARNING.md).
-
-Run `npm run check` for frontend checks. Windows builds use `scripts/desktop.ps1`; Android builds use `scripts/build-android.ps1`. Desktop packaging requires the matching signed Android APK under `releases/android` so local download sharing includes the correct version. See the current release notes for the tested EXE's older bundled-APK limitation. Linux packages are built through [GitHub Actions](https://github.com/OReid60/mreader/actions/workflows/packages.yml).
-
-Independent project inspired by Mihon. Not affiliated with Mihon or any manga source.
+<div align="center">
+
+<img src="src-tauri/icons/icon.png" width="88" alt="Mreader icon">
+
+# Mreader
+
+**Your manga. Your progress. Across your devices.**
+
+A reader for Windows, Android phones and tablets, and Linux.
+
+[**Download Mreader 0.3.52**](https://github.com/OReid60/mreader-downloads/releases/tag/v0.3.52) · [Patch notes](docs/PATCH-NOTES.md) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
+
+</div>
+
+## Read your way
+
+- Fullscreen single-page reading or a continuous chapter strip.
+- Offline chapter downloads with progress and background downloading.
+- Library categories, Favorites, history, and chapter updates.
+- Account sync for reading progress, library choices, sources, and custom covers.
+- Mihon / Tachiyomi migration with a preview before importing.
+- Your choice of source extensions, plus local manga file import.
+
+## Get started
+
+1. [Download the app for your device](docs/DOWNLOAD.md).
+2. Import local manga or add an extension repository in **Settings → Sources**.
+3. Sign in with the same Mreader account on your devices to sync your library and progress.
+4. Download chapters before going offline. Downloads are stored separately on each device.
+
+Installer releases are in the separate private [distribution repository](https://github.com/OReid60/mreader-downloads); sign in with an invited GitHub account to download. This source repository remains public.
+
+Install Android updates over the existing app to keep its data. Source extensions, repository links, and manga content are not included. Users obtain and verify repositories independently. Source availability depends on the provider and extension author.
+
+## What’s new in 0.3.52
+
+Saved Library opens before background sync, secure account work no longer blocks startup, and cached cover art syncs across devices. Offline startup and reconnect sync were checked without changing reading progress. See the [patch notes](docs/PATCH-NOTES.md) for the full release history.
+
+See the [release page](https://github.com/OReid60/mreader-downloads/releases/tag/v0.3.52) for downloads and validation notes.
+
+The rebuilt desktop app and its bundled Android installer both report 0.3.52. The local QR download serves the same signed APK as the release page.
+
+## Google Play readiness
+
+See the [Google Play publishing pack](docs/GOOGLE-PLAY-PUBLISHING.md) for draft store copy, verified build details and requirements still to resolve. The current extension-enabled APK is not ready for Play submission.
+
+## Build and contribute
+
+Mreader uses a shared Rust core with Tauri and an HTML/CSS interface. See [packaging](docs/PACKAGING.md), [source extensions](docs/apk-extensions.md), and [the code walkthrough](docs/LEARNING.md).
+
+Run `npm run check` for frontend checks. Windows builds use `scripts/desktop.ps1`; Android builds use `scripts/build-android.ps1`. Desktop packaging requires the matching signed Android APK under `releases/android` so local download sharing includes the correct version. Linux packages are built through [GitHub Actions](https://github.com/OReid60/mreader/actions/workflows/packages.yml).
+
+Independent project inspired by Mihon. Not affiliated with Mihon or any manga source.
