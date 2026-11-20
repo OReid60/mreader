@@ -2,6 +2,23 @@
 
 New releases are recorded here, newest first. Download the current build from the repository's latest GitHub release. Older release binaries may be removed; these notes and Git tags retain the version history.
 
+## 0.3.52 — 2026-11-19
+
+- Saved Library and the selected startup page appear before network sync. Library/progress and cover sync continue in the background, including after an offline start.
+- Secure session loading is deferred until account work begins; account status is read off the UI thread. Secure storage and progress conflict rules are unchanged.
+- Cached source covers sync privately between signed-in devices and recover automatically after restart. Custom covers keep priority; saved images remain available offline. Account sync does not transfer downloaded manga pages.
+- Read directly from Browse without adding a title to Library or Favorites. Source compatibility handles missing manga URLs, chapter context and thumbnail metadata more consistently.
+- Generated extensions have a separate list. Request extension opens a user-reviewed email draft, with a Gmail web option on desktop; the Notes field matches the app theme. No generated package or third-party repository list is included.
+
+Validation: 69 native tests passed (5 ignored); focused frontend startup/cover and distribution checks passed. Real Android offline startup was checked with Wi-Fi and mobile data off, followed by restoration and successful account sync. Desktop used app-only network isolation so other applications stayed connected. Saved progress fingerprints matched on both devices; no chapters were opened in the reader. Desktop remained on display 2 without PC input. The final Android runner completed OK (1 test).
+
+Limits: observed saved-Library readiness was about 0.7 seconds on Android and 0.1 seconds in the desktop renderer; these are individual checks, exclude some OS/WebView launch overhead and are not guarantees. Only ARM64 Android and portable Windows x64 binaries are included; no new Linux package or Google Play edition is provided.
+
+Desktop version/bundle note: this tested EXE includes the latest fixes, but its internal app version and QR-shared bundled APK still report 0.3.46. Install Android 0.3.52 from this release's separate APK; the desktop QR installer is not updated in this release. The release number identifies this distribution, not the desktop's embedded version field.
+
+Update: install the APK over the existing app; do not uninstall. Close Mreader before replacing the portable EXE. Account and local library data remain outside the executable. Check SHA256SUMS after downloading. Release assets are private and require an invited GitHub account. Version 0.3.46 is retained for rollback.
+
+
 ## 0.3.46 — 2026-11-18
 
 - Source picker stays above the mobile header and navigation, with safe screen margins.
