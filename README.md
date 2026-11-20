@@ -8,7 +8,7 @@
 
 A reader for Windows, Android phones and tablets, and Linux.
 
-[**Download Mreader 0.3.46**](https://github.com/OReid60/mreader-downloads/releases/tag/v0.3.46) · [Patch notes](docs/PATCH-NOTES.md) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
+[**Download Mreader 0.3.52**](https://github.com/OReid60/mreader-downloads/releases/tag/v0.3.52) · [Patch notes](docs/PATCH-NOTES.md) · [Installation guide](docs/DOWNLOAD.md) · [Report an issue](https://github.com/OReid60/mreader/issues)
 
 </div>
 
@@ -32,11 +32,13 @@ Installer releases are in the separate private [distribution repository](https:/
 
 Install Android updates over the existing app to keep its data. Source extensions, repository links, and manga content are not included. Users obtain and verify repositories independently. Source availability depends on the provider and extension author.
 
-## What’s new in 0.3.46
+## What’s new in 0.3.52
 
-The source picker now stays above mobile navigation and fits within the screen. Long source lists scroll inside the dialog without cutting off its top or bottom. See the [patch notes](docs/PATCH-NOTES.md) for the full release history.
+Saved Library opens before background sync, secure account work no longer blocks startup, and cached cover art syncs across devices. Offline startup and reconnect sync were checked without changing reading progress. See the [patch notes](docs/PATCH-NOTES.md) for the full release history.
 
-See the [release page](https://github.com/OReid60/mreader-downloads/releases/tag/v0.3.46) for downloads and validation notes.
+See the [release page](https://github.com/OReid60/mreader-downloads/releases/tag/v0.3.52) for downloads and validation notes.
+
+Desktop limitation: the tested EXE still reports internal version 0.3.46 and shares the older 0.3.46 APK through its QR download. Use the separate 0.3.52 APK from the release page for Android updates.
 
 ## Google Play readiness
 
@@ -46,6 +48,6 @@ See the [Google Play publishing pack](docs/GOOGLE-PLAY-PUBLISHING.md) for draft 
 
 Mreader uses a shared Rust core with Tauri and an HTML/CSS interface. See [packaging](docs/PACKAGING.md), [source extensions](docs/apk-extensions.md), and [the code walkthrough](docs/LEARNING.md).
 
-Run `npm run check` for frontend checks. Windows builds use `scripts/desktop.ps1`; Android builds use `scripts/build-android.ps1`. Desktop packaging requires the matching signed Android APK under `releases/android` so local download sharing includes the correct version. Linux packages are built through [GitHub Actions](https://github.com/OReid60/mreader/actions/workflows/packages.yml).
+Run `npm run check` for frontend checks. Windows builds use `scripts/desktop.ps1`; Android builds use `scripts/build-android.ps1`. Desktop packaging requires the matching signed Android APK under `releases/android` so local download sharing includes the correct version. See the current release notes for the tested EXE's older bundled-APK limitation. Linux packages are built through [GitHub Actions](https://github.com/OReid60/mreader/actions/workflows/packages.yml).
 
 Independent project inspired by Mihon. Not affiliated with Mihon or any manga source.
